@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""
+example_amazon.py — an Amazon / dropshipping PRODUCT PICKER built from the Universal
+Genome. Decides which products to source — but only after ALL of Amazon's fees are
+subtracted (the trap most sellers fall into) and only as a SMALL test batch first
+(scale later, once it proves it sells). Same seven organs, e-commerce cells.
+
+  python genome/example_amazon.py
+
+This is a seed for a new project: copy genome.py + this file into a new folder/repo
+and grow the eyes (which niches actually profit) + the truth-meter (early sell-through).
+"""
+from __future__ import annotations
+
+from genome import DataFeed, EdgeModel, Risk, Execution, Eyes, Machine
+
+# Amazon's "vig" — the fees that quietly eat your margin (tune to your category):
+REFERRAL = 0.15     # Amazon referral fee (~8–15% of sell price)
+AD_COST = 0.15      # PPC ads to actually get sales (~10–20% of sell price)
+RETURN_RATE = 0.05  # refunds/returns eat ~5%
+
+
+def net_profit(p):
+    """Profit per unit AFTER every Amazon fee — the number that actually matters."""
+    fees = p["sell"] * (REFERRAL + AD_COST + RETURN_RATE) + p["fba"]
+    return p["sell"] - p["cost"] - fees
+
+
+# 👂 EARS — products you could source (your scraper / supplier list plugs in here)
+class ProductFeed(DataFeed):
+    def candidates(self):
+        return [
+            # sell, cost, fba (per-unit pick/pack/ship), monthly_sales, competition, niche
+            {"id": "P1", "name": "LED strip lights", "sell": 22, "cost": 5,  "fba": 4, "monthly_sales": 800, "competition": 0.4, "niche": "home"},
+            {"id": "P2", "name": "Phone case (generic)", "sell": 25, "cost": 12, "fba": 5, "monthly_sales": 600, "competition": 0.9, "niche": "phones"},
+            {"id": "P3", "name": "Yoga mat (premium)", "sell": 45, "cost": 14, "fba": 6, "monthly_sales": 300, "competition": 0.5, "niche": "fitness"},
+            {"id": "P4", "name": "Kitchen gadget", "sell": 30, "cost": 8,  "fba": 5, "monthly_sales": 50,  "competition": 0.6, "niche": "kitchen"},
+        ]
+
+
+# 🧠 BRAIN — edge = ROI after ALL fees. (Most products look fine until you subtract the vig.)
+class ProductEdge(EdgeModel):
+    def fair(self, p):
+        return 1.0                                   # break-even ROI
+    def mine(self, p):
+        return (net_profit(p) / p["cost"]) + 1.0     # your true return-on-cost
+    # edge() = mine − fair = ROI after fees (e.g. 0.6 = +60% ROI on cost)
+
+
+# ❤️ HEART — risk first. Order a SMALL TEST BATCH; never tie up too much in one unproven SKU.
+class ProductRisk(Risk):
+    def __init__(self, capital, max_per=0.20, min_edge=0.30, test_units=15):
+        super().__init__(capital, min_edge=min_edge, max_per=max_per)
+        self.test_units = test_units                 # prove it sells before you scale
+
+    def kelly(self, p, edge):
+        return edge                                  # contract; sizing is the test batch below
+
+    def stake(self, p, edge):
+        batch = self.test_units * p["cost"]          # cost of a small test order
+        cap = self.max_per * self.bankroll
+        if p["monthly_sales"] < 100:                 # no demand → don't even test
+            return 0.0
+        return round(min(batch, cap), 2) if batch <= cap else round(cap, 2)
+
+
+# ✋ HANDS — confirm-first "source a test batch"
+class ProductExec(Execution):
+    def place(self, p, stake, live=False):
+        units = int(stake / p["cost"])
+        print("    📦 SOURCE %-20s %d units · $%.0f  (ROI ~%.0f%% after fees, $%.2f net/unit)"
+              % (p["name"], units, stake, (net_profit(p) / p["cost"]) * 100, net_profit(p)))
+
+
+# 👁️ EYES — recognise the kind of product; LEARN which kinds actually sell at profit.
+class ProductEyes(Eyes):
+    def detect(self, p):
+        pats = [{"name": "niche:" + p["niche"], "dir": 1}]
+        if p["competition"] >= 0.8:
+            pats.append({"name": "saturated", "dir": -1})      # crowded → bearish
+        if p["monthly_sales"] >= 500 and p["competition"] <= 0.5:
+            pats.append({"name": "rising_demand", "dir": 1})
+        return pats
+
+    def trust(self, name):
+        return 0.5     # inert until the truth-meter (real sell-through) proves a niche profits
+
+
+if __name__ == "__main__":
+    m = Machine(ProductFeed(), ProductEdge(), ProductRisk(capital=2000), ProductEyes(), ProductExec(), name="amazon-picker")
+    print("AMAZON PICKER — one cycle (gate: ≥30% ROI after fees · ≤$400/SKU · 15-unit test):\n")
+    tickets = m.cycle()
+    print("\nsource the cleared products (confirm-first, test batch only):")
+    exe = ProductExec()
+    for p, stake in tickets:
+        exe.place(p, stake)
