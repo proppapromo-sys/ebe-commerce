@@ -1,0 +1,5 @@
+id,name,category,sell,cost,spend,ad_sales,target_acos
+C-P1,LED strips,home,22,5,600,4200,0.25
+C-M1,Graphic tee,apparel,28,9,900,2400,0.30
+C-M2,Cap,apparel,24,7,300,2700,0.30
+C-P3,Yoga mat,fitness,45,14,500,1800,0.25

@@ -30,6 +30,33 @@ python -m ebe sourcing --fees amazon-apparel   # higher referral + brutal return
 `--place` hands cleared decisions to the execution organ (always **dry-run** until you wire
 in real APIs and pass `live=True`).
 
+### Run it on YOUR data (CSV)
+
+No code edits — export your catalog / inventory / ad campaigns to CSV and load them in:
+
+```bash
+python -m ebe all      --products examples/products.csv --campaigns examples/campaigns.csv
+python -m ebe sourcing --products my_catalog.csv --fees amazon-apparel
+python -m ebe adspend  --campaigns my_ads.csv
+```
+
+**`products.csv`** — one row per SKU; apparel repeats the product columns, one row per
+size/colour variant (see [`examples/products.csv`](examples/products.csv)):
+
+```
+id,name,category,cost,sell,fulfilment,competition,lead_time_days,elasticity,size,color,on_hand,monthly_sales
+P1,LED strip lights,home,5,22,4,0.4,18,1.8,,,900,800
+M1,Graphic tee,apparel,9,28,5,0.5,21,1.6,S,Black,15,40
+M1,Graphic tee,apparel,9,28,5,0.5,21,1.6,M,Black,60,120
+```
+
+**`campaigns.csv`** — one row per advertised SKU (see [`examples/campaigns.csv`](examples/campaigns.csv)):
+
+```
+id,name,category,sell,cost,spend,ad_sales,target_acos
+C-P1,LED strips,home,22,5,600,4200,0.25
+```
+
 | Branch | Question it answers | Edge = |
 |---|---|---|
 | `sourcing` | What should I buy in? | ROI after all fees vs break-even |
@@ -116,7 +143,8 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Universal Genome + fee models
 - [x] Branches: sourcing, pricing, inventory, adspend
 - [x] First-class apparel/merch (variants + apparel economics)
-- [ ] Real data adapters (Seller-Central / Shopify / supplier scrapers) replacing sample feeds
+- [x] CSV import — run every branch on your own catalog / inventory / campaigns
+- [ ] Live API adapters (Seller-Central / Shopify / supplier scrapers) replacing CSV exports
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns
 - [ ] Persistence + dashboards
 - [ ] **Storefront** (FastAPI) with the genome wired in for auto-pricing & auto-sourcing
