@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ebe-commerce"
+version = "0.1.0"
+description = "A risk-first seller engine for marketplaces — one Universal Genome, many branches."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []          # pure standard library — runs anywhere
+
+[project.scripts]
+ebe = "ebe.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ebe*"]

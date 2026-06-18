@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-genome.py — THE UNIVERSAL GENOME. The reusable skeleton behind both EBE machines
-(the stock trader AND the betting engine). Implement the seven organs for YOUR
-domain; the Machine wires them into the same risk-first, forward-validated loop.
-Any truth-driven software — trading, betting, ops, bidding, resource allocation —
-is the same organism with different cells.
+genome.py — THE UNIVERSAL GENOME for EBE Commerce.
+
+The reusable skeleton behind every "branch" of the seller engine (sourcing,
+pricing, restock, ad-spend, ...). Implement the seven organs for YOUR decision;
+the Machine wires them into the same risk-first, forward-validated loop.
 
 THE FIVE LAWS (the DNA — never break them):
   1. Risk-first, not prediction-first.            (survive before you win)
-  2. Edge = your number vs the world's number.    (no edge → no action)
+  2. Edge = your number vs the world's number.    (no edge -> no action)
   3. Forward-validate before real stakes.         (the truth-meter)
   4. Recognise + remember, don't predict.         (trust is earned on your record)
   5. Confirm-first, never chase.                  (no revenge, no size-up on a streak)
 
-HOW TO BUILD ANY SOFTWARE FROM THIS:
-  1. Implement the ABCs (DataFeed, EdgeModel, Risk, Execution, Eyes, TruthMeter).
+HOW TO GROW A NEW BRANCH FROM THIS:
+  1. Implement the ABCs (DataFeed, EdgeModel, Risk, Execution, Eyes[, TruthMeter]).
   2. Hand them to Machine(...).
-  3. Call .run_forever() — one process, own clock, self-healing (see WATCHDOG.md).
-Run this file for a tiny end-to-end demo.
+  3. Call .cycle() once, or .run_forever() for a live process.
+Run this file for a tiny end-to-end demo:  python -m ebe.genome
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ class Risk(ABC):
         """Confirm-first decision — the heart can always VETO. (ok, stake, reason)."""
         if self.killed:
             return (False, 0.0, "kill-switch active")
-        if self.day_pnl <= -self.daily_stop * self.bankroll:
+        if self.day_pnl < 0 and self.day_pnl <= -self.daily_stop * self.bankroll:
             return (False, 0.0, "daily stop hit")
         if edge < self.min_edge:
             return (False, 0.0, "no edge (%.1f%% < %.1f%%)" % (edge * 100, self.min_edge * 100))
@@ -103,45 +103,59 @@ class Eyes(ABC):
         return [p["name"] for p in self.detect(item) if p.get("dir", 0) < 0 and self.graduated(p["name"])]
 
 
-# ── 🩸 TRUTH-METER — the FAST forward-validation signal (CLV / t-stat / …) ────
+# A do-nothing pair of eyes: a branch can start blind and grow sight later.
+class BlindEyes(Eyes):
+    def detect(self, item):
+        return []
+
+    def trust(self, name):
+        return 0.5
+
+
+# ── 🩸 TRUTH-METER — the FAST forward-validation signal (CLV / sell-through / …) ─
 class TruthMeter(ABC):
     @abstractmethod
     def score(self, placed_action) -> float:
-        """Did you beat the world's later/closing estimate? >0 = real edge, proven fast."""
+        """Did you beat the world's later estimate? >0 = real edge, proven fast."""
 
 
 # ── 🔄 THE MACHINE — the universal loop + resilience ─────────────────────────
 class Machine:
     """Wires the organs into one risk-first, forward-validated pass — the same loop
-    that runs the EBE trader and the betting engine. run_forever() = the seamless,
-    self-healing process (pair with a supervisor/watchdog for crash + reboot cover)."""
+    every branch of the seller engine runs. run_forever() = the seamless, self-healing
+    process (pair with a supervisor/watchdog for crash + reboot cover)."""
 
     def __init__(self, feed: DataFeed, edge: EdgeModel, risk: Risk, eyes: Eyes,
                  exe: Execution, name="machine"):
         self.feed, self.edge, self.risk, self.eyes, self.exe, self.name = feed, edge, risk, eyes, exe, name
 
-    def cycle(self):
+    def cycle(self, place=False, live=False):
+        """One pass. Returns the cleared tickets [(item, stake), ...].
+        If place=True, hand each cleared ticket to the hands (dry-run unless live)."""
         tickets = []
         for item in self.feed.candidates():
             iid = item.get("id", "?")
             e = self.edge.edge(item)
             if self.eyes.veto(item):                                   # 👁️ proven-bad → defensive skip
-                print("  veto  %-10s — 👁️ %s" % (iid, self.eyes.veto(item))); continue
+                print("  veto  %-12s — 👁️ %s" % (iid, self.eyes.veto(item))); continue
             ok, stake, why = self.risk.gate(item, e)                   # ❤️ edge + Kelly + caps + stop
             if not ok:
-                print("  pass  %-10s — %s" % (iid, why)); continue
+                print("  pass  %-12s — %s" % (iid, why)); continue
             conf = self.eyes.confirm(item)
-            print("  🎯 %-10s %s%s" % (iid, why, (" · ✅ " + ",".join(conf)) if conf else ""))
+            print("  🎯 %-12s %s%s" % (iid, why, (" · ✅ " + ",".join(conf)) if conf else ""))
             tickets.append((item, stake))                             # ✋ hand to execution (confirm-first)
+        if place:
+            for item, stake in tickets:
+                self.exe.place(item, stake, live=live)
         return tickets
 
-    def run_forever(self, interval_s=300, is_open=lambda: True):
+    def run_forever(self, interval_s=300, is_open=lambda: True, place=True, live=False):
         """One process, own clock, never dies."""
         while True:
             try:
                 if is_open():
                     print("── %s cycle ──" % self.name)
-                    self.cycle()
+                    self.cycle(place=place, live=live)
                 time.sleep(interval_s)
             except KeyboardInterrupt:
                 return
@@ -165,13 +179,9 @@ if __name__ == "__main__":
     class _Risk(Risk):
         def kelly(self, it, edge): return it["k"]
 
-    class _Eyes(Eyes):
-        def detect(self, it): return []        # no patterns graduated yet → inert
-        def trust(self, name): return 0.5
-
     class _Exe(Execution):
         def place(self, it, stake, live=False): print("    placed", it["id"], stake)
 
-    m = Machine(_Feed(), _Edge(), _Risk(bankroll=1000), _Eyes(), _Exe(), name="demo")
+    m = Machine(_Feed(), _Edge(), _Risk(bankroll=1000), BlindEyes(), _Exe(), name="demo")
     print("UNIVERSAL GENOME demo — one cycle:")
-    m.cycle()
+    m.cycle(place=True)
