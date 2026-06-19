@@ -52,5 +52,17 @@ class AIBrainTests(unittest.TestCase):
         self.assertIn("G", ids)
 
 
+class PingTests(unittest.TestCase):
+    def test_ping_without_key_raises_cleanly(self):
+        import os
+        from ebe.adapters import config
+        from ebe.adapters.base import AdapterError
+        from ebe.ai.client import ping
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        config._LOADED = True            # don't read a .env file during the test
+        with self.assertRaises(AdapterError):
+            ping()
+
+
 if __name__ == "__main__":
     unittest.main()

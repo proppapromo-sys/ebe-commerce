@@ -111,11 +111,12 @@ def _check():
                 AdsApiClient().check()
                 print("  ● %-12s OK · profiles reachable" % name)
             elif name == "ai":
-                from .ai.client import available
-                if available():
-                    print("  ● %-12s OK · key set + anthropic SDK installed" % name)
-                else:
+                from .ai.client import available, ping
+                if not available():
                     print("  ◐ %-12s key set, but `pip install anthropic` is missing" % name)
+                else:
+                    ping()                      # real call — raises on a bad key / no credit
+                    print("  ● %-12s OK · key valid (live ping)" % name)
         except Exception as e:
             print("  ✕ %-12s configured but FAILED: %s" % (name, e))
     print("\n(fill .env from .env.example — see SETUP.md)")

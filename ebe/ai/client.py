@@ -45,6 +45,24 @@ def available():
         return False
 
 
+def ping():
+    """Make a tiny REAL call to confirm the key actually authenticates. Raises AdapterError
+    with a plain-English reason (bad key / no credit) so `check` validates instead of guessing."""
+    client = get_client()
+    try:
+        client.messages.create(model=MODEL_FAST, max_tokens=1,
+                               messages=[{"role": "user", "content": "ping"}])
+    except Exception as e:
+        code = getattr(e, "status_code", None)
+        msg = str(e)
+        if code == 401 or "x-api-key" in msg or "authentication" in msg.lower():
+            raise AdapterError("invalid ANTHROPIC_API_KEY (401) — create a fresh one at console.anthropic.com")
+        if "credit" in msg.lower() or "billing" in msg.lower():
+            raise AdapterError("key valid but no credit — add billing at console.anthropic.com")
+        raise AdapterError(msg[:200])
+    return True
+
+
 def ask_json(system, user, schema, max_tokens=2000, model=None, images=None):
     """One structured call: returns Claude's answer parsed against `schema`.
     Pass `model` (e.g. MODEL_FAST for Eyes) and optional `images` (URLs) for vision."""
