@@ -5,6 +5,7 @@ whole project still installs with zero dependencies. JSON in, JSON out, clear er
 """
 from __future__ import annotations
 
+import gzip
 import json
 import urllib.error
 import urllib.parse
@@ -13,6 +14,14 @@ import urllib.request
 
 class AdapterError(Exception):
     """Any failure talking to an external API (HTTP error, network, bad JSON)."""
+
+
+def _decode(raw, content_encoding=None):
+    """Decode a response body to text, transparently gunzipping when needed.
+    Some APIs (e.g. Keepa) always gzip their responses; urllib doesn't unzip for us."""
+    if raw[:2] == b"\x1f\x8b" or content_encoding == "gzip":   # gzip magic bytes
+        raw = gzip.decompress(raw)
+    return raw.decode("utf-8", "replace")
 
 
 def request_json(method, url, headers=None, params=None, json_body=None, form=None, timeout=30):
@@ -33,9 +42,9 @@ def request_json(method, url, headers=None, params=None, json_body=None, form=No
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
+            body = _decode(resp.read(), resp.headers.get("Content-Encoding"))
     except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", "replace")[:800] if e.fp else ""
+        detail = _decode(e.read(), e.headers.get("Content-Encoding"))[:800] if e.fp else ""
         raise AdapterError("HTTP %s from %s — %s" % (e.code, url.split("?")[0], detail))
     except urllib.error.URLError as e:
         raise AdapterError("network error reaching %s — %s" % (url.split("?")[0], e.reason))
