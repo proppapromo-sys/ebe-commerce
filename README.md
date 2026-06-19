@@ -172,6 +172,9 @@ and **AI Ears** (Haiku, supplier-data normalization) — the full AI organ set, 
 python -m ebe ears --file examples/supplier_listings.txt --out catalog.csv
 # turns "Hookah Mouth Tips 1000pcs/box $30 MOQ 10" into clean {name,category,cost,sell} rows
 python -m ebe sourcing --products catalog.csv     # then score them
+
+python -m ebe pipeline --file examples/supplier_listings.txt --profile hookah
+# one shot: raw listings → Ears normalize → true-edge score → cornerable shortlist
 ```
 
 ```bash
@@ -428,6 +431,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [x] AI Eyes — Claude (Haiku) recognises product patterns (+ optional image vision), caged by the journal
 - [x] AI Ears — Claude (Haiku) normalizes messy supplier listings into clean Product rows
+- [x] `pipeline` — one command: raw listings → Ears → true-edge score → cornerable shortlist
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns

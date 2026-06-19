@@ -296,6 +296,33 @@ def _ears(args):
         print("\n  → wrote %s (run: python -m ebe sourcing --products %s)" % (args.out, args.out))
 
 
+def _pipeline(args):
+    """AI pipeline: raw supplier listings → Ears normalize → true-edge score → cornerable shortlist."""
+    if not args.file:
+        raise SystemExit("--file listings.txt required (one supplier listing per line)")
+    from .ai.ears import normalize_listings
+    from . import edges as edgemod
+    from .profile import PROFILES
+    with open(args.file, encoding="utf-8") as fh:
+        lines = [ln.strip() for ln in fh if ln.strip()]
+    prods = normalize_listings(lines)
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    fee = PRESETS[args.fees]
+    items = [p.as_item() for p in prods]
+    ranked = edgemod.rank(items, prof, fee)
+
+    print("\n══ EBE COMMAND · AI PIPELINE ══ (%d listings · profile %s · %s)" % (len(items), prof.name, fee.name))
+    print("\n  product                        category   cost    sell   EDGE moat  verdict")
+    for e in ranked:
+        it = e.item
+        print("  %-30s %-9s $%-6.2f $%-6.2f %3.0f%% %3.0f%%  %s"
+              % (it.get("name", "?")[:30], it.get("category", "?"), it.get("cost", 0),
+                 it.get("sell", 0), e.composite * 100, e.moat * 100, e.verdict))
+    corner = [e for e in ranked if e.verdict == "CORNER"]
+    print("\n  %d cornerable · get real sell/demand (Keepa: discover/arbitrage) for the top ones," % len(corner))
+    print("  then `sourcing --asin-costs` to confirm ROI on live numbers.")
+
+
 def _scout(args):
     """Survey a market through a Profile — landscape map + ranked, personalised opportunities."""
     from .profile import PROFILES
@@ -464,8 +491,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -534,6 +561,12 @@ def main(argv=None):
             return _ears(args)
         except AdapterError as e:
             raise SystemExit("ears failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
+    if args.branch == "pipeline":
+        from .adapters.base import AdapterError
+        try:
+            return _pipeline(args)
+        except AdapterError as e:
+            raise SystemExit("pipeline failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
