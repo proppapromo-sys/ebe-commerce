@@ -57,6 +57,27 @@ id,name,category,sell,cost,spend,ad_sales,target_acos
 C-P1,LED strips,home,22,5,600,4200,0.25
 ```
 
+### Run it on LIVE data (real APIs)
+
+Connect to the real systems your numbers live in. Credentials go in a git-ignored `.env`
+(`cp .env.example .env`); **[SETUP.md](SETUP.md)** is the step-by-step to obtain each one.
+
+```bash
+python -m ebe check     # doctor: which integrations are wired + reachable
+```
+
+| Integration | Powers | Status | Get a key |
+|---|---|---|---|
+| **Keepa** | sourcing (live price + real monthly sales) | ✅ usable today | instant — keepa.com/#!api |
+| **Amazon SP-API** | pricing, inventory (your listings/stock) | auth wired, comes online with creds | Seller Central → Develop Apps |
+| **Amazon Ads API** | adspend (real spend/sales/ACOS) | auth wired, comes online with creds | developer.amazon.com |
+
+Live sourcing today (Keepa key + an `asin,cost` sheet of supplier quotes):
+
+```bash
+python -m ebe sourcing --asin-costs examples/asin_costs.csv --fees amazon-fba
+```
+
 | Branch | Question it answers | Edge = |
 |---|---|---|
 | `sourcing` | What should I buy in? | ROI after all fees vs break-even |
@@ -144,7 +165,9 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Branches: sourcing, pricing, inventory, adspend
 - [x] First-class apparel/merch (variants + apparel economics)
 - [x] CSV import — run every branch on your own catalog / inventory / campaigns
-- [ ] Live API adapters (Seller-Central / Shopify / supplier scrapers) replacing CSV exports
+- [x] Live API adapters — Keepa (sourcing) usable now; Amazon SP-API + Ads auth wired ([SETUP.md](SETUP.md))
+- [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
+- [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns
 - [ ] Persistence + dashboards
 - [ ] **Storefront** (FastAPI) with the genome wired in for auto-pricing & auto-sourcing
