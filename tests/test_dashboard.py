@@ -35,6 +35,18 @@ class DashboardRenderTests(unittest.TestCase):
         page = dashboard.render(dashboard._data(_args()))
         self.assertNotIn("<script", page.lower())
 
+    def test_landscape_venue_and_switcher_panels(self):
+        page = dashboard.render(dashboard._data(_args()))
+        self.assertIn("Landscape", page)
+        self.assertIn("Venue supplies", page)
+        self.assertIn("/?profile=hookah", page)        # clickable profile switcher
+        self.assertIn("http-equiv=refresh", page)      # auto-refresh
+
+    def test_query_overrides_profile(self):
+        a = dashboard._req_args(_args(profile="generic"), "profile=hookah&capital=2500")
+        self.assertEqual(a.profile, "hookah")
+        self.assertEqual(a.capital, 2500.0)
+
 
 if __name__ == "__main__":
     unittest.main()

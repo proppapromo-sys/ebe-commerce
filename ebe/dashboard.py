@@ -12,6 +12,8 @@ from __future__ import annotations
 import contextlib
 import html
 import io
+import types
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -44,11 +46,16 @@ def _data(args):
 
     cal = forecast.cash_calendar(live)
     win = forecast.windows(cal)
-    prof = PROFILES.get(args.profile or "generic")
-    ranked = edgemod.rank(scout.sample_market(), prof, fee)
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    market = scout.sample_market()
+    ranked = edgemod.rank(market, prof, fee)
+    land = scout.landscape(market, prof, fee)
+    from .venue.sample import sample_menu, sample_consumables, sample_sales
+    venue_cal = forecast.venue_calendar(sample_sales(), sample_menu(), sample_consumables())
     return dict(fee=fee, prof=prof, capital=args.capital,
                 ret=t_ret, inv=t_inv, pr=t_pr, ad=t_ad, src=t_src,
-                cal=cal, win=win, ed=ranked)
+                cal=cal, win=win, ed=ranked, land=land, venue=venue_cal,
+                profiles=sorted(PROFILES))
 
 
 _CSS = """
@@ -75,9 +82,14 @@ def render(d):
     fee, prof = d["fee"], d["prof"]
     out = ["<!doctype html><meta charset=utf-8><title>EBE Command</title>",
            "<meta name=viewport content='width=device-width,initial-scale=1'>",
+           "<meta http-equiv=refresh content=30>",          # live control screen
            "<style>%s</style>" % _CSS,
            "<h1>EBE&nbsp;COMMAND</h1>",
-           "<div class=sub>profile: %s · fees: %s · auto-computed live</div>" % (_esc(prof.name), _esc(fee.name))]
+           "<div class=sub>profile: %s · fees: %s · auto-refresh 30s</div>" % (_esc(prof.name), _esc(fee.name))]
+    # profile switcher
+    cap = "" if d["capital"] is None else "&capital=%g" % d["capital"]
+    nav = " · ".join("<a href='/?profile=%s%s'>%s</a>" % (_esc(p), cap, _esc(p)) for p in d.get("profiles", []))
+    out.append("<div class=sub>profile → %s</div>" % nav)
 
     # ── TODAY ──
     out.append("<h2>🎯 Today</h2>")
@@ -139,7 +151,43 @@ def render(d):
         out.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span></tr>"
                    % (_esc(e.item["name"]), e.composite * 100, e.moat * 100, e.verdict, e.verdict))
     out.append("</table>")
+
+    # ── LANDSCAPE ──
+    out.append("<h2>🗺️ Landscape</h2>")
+    out.append("<table><tr><th>category<th class=r>crowding<th class=r>demand<th class=r>ROI<th class=r>your-edge<th>read</tr>")
+    for r in d.get("land", []):
+        read = "leaders dominate" if r["competition"] >= 0.75 else ("OPEN LANE" if r["competition"] <= 0.40 else "contested")
+        fit = "+%.0f%%" % (r["fit"] * 100) if r["fit"] else "–"
+        out.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f/mo<td class=r>%.0f%%<td class=r>%s<td>%s</tr>"
+                   % (_esc(r["category"]), r["competition"] * 100, r["demand"], r["roi"] * 100, fit, read))
+    out.append("</table>")
+
+    # ── VENUE SUPPLIES ──
+    if d.get("venue"):
+        out.append("<h2>🏪 Venue supplies</h2><table><tr><th>when<th>item<th class=r>reorder<th class=r>cash<th class=r>cover</tr>")
+        for r in d["venue"]:
+            when = "NOW" if r["days_until"] <= 0 else "in %.0fd" % r["days_until"]
+            out.append("<tr><td>%s<td>%s<td class=r>%d<td class=r>$%.0f<td class=r>%.0fd</tr>"
+                       % (when, _esc(r["name"]), r["qty"], r["cash"], r["cover"]))
+        out.append("</table>")
     return "".join(out)
+
+
+def _req_args(base, query):
+    """Per-request args: clone base, override profile/fees/capital from the query string."""
+    from .fees import PRESETS
+    a = types.SimpleNamespace(**vars(base))
+    qs = urllib.parse.parse_qs(query)
+    if qs.get("profile"):
+        a.profile = qs["profile"][0]
+    if qs.get("fees") and qs["fees"][0] in PRESETS:
+        a.fees = qs["fees"][0]
+    if qs.get("capital"):
+        try:
+            a.capital = float(qs["capital"][0])
+        except ValueError:
+            pass
+    return a
 
 
 def serve(args):
@@ -147,10 +195,11 @@ def serve(args):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path.split("?")[0] not in ("/", ""):
+            path, _, query = self.path.partition("?")
+            if path not in ("/", ""):
                 self.send_response(404); self.end_headers(); return
             try:
-                body = render(_data(args)).encode("utf-8")
+                body = render(_data(_req_args(args, query))).encode("utf-8")
             except Exception as ex:
                 body = ("<pre>dashboard error: %s</pre>" % html.escape(str(ex))).encode("utf-8")
             self.send_response(200)
