@@ -129,6 +129,7 @@ Shipped today: the **AI Brain**. Next: AI Eyes (trend/product recognition) and E
 | `pricing` | What price makes the most money? | profit uplift vs today's price |
 | `inventory` | What's about to stock out? | how far below the reorder point |
 | `adspend` | Where should ad money go? | headroom under target ACOS |
+| `returns` | Which SKUs leak margin to returns? | return rate above the category norm |
 
 ---
 
@@ -217,6 +218,8 @@ ebe/
     pricing.py         # branch 2 — reprice for max profit-after-fees
     inventory.py       # branch 3 — restock / reorder-point (per variant)
     adspend.py         # branch 4 — ad-budget allocation by ACOS/ROAS
+    returns.py         # branch 6 — stop the return leak (excess returns vs category norm)
+  journal.py           # the record: decisions + outcomes (learning loop)
   cli.py / __main__.py # python -m ebe <branch>
 tests/                 # unittest suite (python -m unittest discover -s tests)
 ```

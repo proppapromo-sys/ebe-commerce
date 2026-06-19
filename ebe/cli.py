@@ -25,9 +25,9 @@ from .catalog.feeds import (
     ListFeed, sample_sourcing_catalog, sample_live_catalog,
 )
 from .catalog.csv_io import load_products, load_campaigns
-from .branches import sourcing, pricing, inventory, adspend
+from .branches import sourcing, pricing, inventory, adspend, returns
 
-BRANCHES = ("sourcing", "pricing", "inventory", "adspend")
+BRANCHES = ("sourcing", "pricing", "inventory", "adspend", "returns")
 
 
 def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None, portfolio=None):
@@ -56,6 +56,8 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, 
         m = inventory.build(prods)
     elif name == "adspend":
         m = adspend.build(campaigns=campaigns, fee_model=fee_model)
+    elif name == "returns":
+        m = returns.build(fee_model=fee_model)
     else:
         raise SystemExit("unknown branch: %s" % name)
     if journal is not None:
