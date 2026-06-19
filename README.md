@@ -11,6 +11,22 @@ the operator. The architecture grows toward a full operator + supply platform.
 
 ---
 
+## The daily driver
+
+```bash
+python -m ebe command         # ONE consolidated action list across every branch
+```
+```
+══ EBE COMMAND · TODAY ══
+🩹 STOP THE LEAK   🚚 REORDER   🏷️ REPRICE   📈 SCALE ADS   📦 SOURCE
+16 actions today · cash out ≈ $16,752 (reorder + source) · monthly upside ≈ $5,939
+```
+
+Then record what actually happened so the engine compounds:
+```bash
+python -m ebe outcome --journal record.jsonl --id P1 --win    # (or --loss / --score N)
+```
+
 ## The branches (run any of them today)
 
 Each branch is the **same loop** with different cells. Pure standard library — no installs.
@@ -361,6 +377,8 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Live `edges` — the true-edge engine on real ASINs: live arbitrage + live rank-momentum timing fused in
 - [x] Cross-channel arbitrage — CSV price sources today, live eBay Browse API, pluggable PriceSource
 - [x] Compounding edge — journal outcomes become per-category trust; proven lanes auto-sharpen each run
+- [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
+- [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku

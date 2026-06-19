@@ -281,6 +281,81 @@ def _scout(args):
     print("  → %d worth pursuing for this profile." % len(tickets))
 
 
+def _outcome(args):
+    """Record a real result so the learning loop / compounding edge runs on actual data."""
+    if not args.journal:
+        raise SystemExit("--journal record.jsonl is required")
+    if not args.id:
+        raise SystemExit("--id <decision id> is required (e.g. --id P1)")
+    from .journal import Journal
+    if args.score is not None:
+        score = args.score
+    elif args.win:
+        score = 1.0
+    elif args.loss:
+        score = -1.0
+    else:
+        raise SystemExit("say how it went: --win, --loss, or --score <number>")
+    Journal(args.journal).record_outcome(args.outcome_branch or "edges", args.id, score)
+    print("📓 recorded outcome: %s = %+g  →  %s (re-run with --journal to compound)"
+          % (args.id, score, args.journal))
+
+
+def _command(args):
+    """EBE COMMAND — one consolidated daily action list across every operator branch."""
+    import contextlib
+    import io
+    fee_model = PRESETS[args.fees]
+    products = load_products(args.products) if args.products else None
+    campaigns = load_campaigns(args.campaigns) if args.campaigns else None
+    live = products if products is not None else sample_live_catalog()
+    src = products if products is not None else sample_sourcing_catalog()
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):           # silence each branch; we render one report
+        t_returns = returns.build(fee_model=fee_model).cycle()
+        t_inv = inventory.build(live).cycle()
+        t_price = pricing.build(ListFeed(live), fee_model=fee_model).cycle()
+        t_ads = adspend.build(campaigns=campaigns, fee_model=fee_model).cycle()
+        t_source = sourcing.build(ListFeed(src), fee_model=fee_model).cycle()
+
+    print("\n══ EBE COMMAND · TODAY ══ (fees: %s)" % fee_model.name)
+
+    leak = sum(s for _, s in t_returns)
+    if t_returns:
+        print("\n🩹 STOP THE LEAK (returns above norm):")
+        for it, s in t_returns:
+            print("   %-26s %3.0f%% returns · $%.0f/mo bleeding" % (it["name"][:26], it.get("_rate", 0) * 100, s))
+
+    reorder_cash = sum(int(s) * it.get("cost", 0) for it, s in t_inv)
+    if t_inv:
+        print("\n🚚 REORDER (about to stock out):")
+        for it, s in t_inv:
+            print("   %-26s %4d units · $%.0f" % (it["name"][:26], int(s), int(s) * it.get("cost", 0)))
+
+    uplift = sum(s for _, s in t_price)
+    if t_price:
+        print("\n🏷️  REPRICE (leaving money on the table):")
+        for it, s in t_price:
+            print("   %-26s $%.2f → $%.2f · +$%.0f/mo" % (it["name"][:26], it["sell"], it.get("_best_price", it["sell"]), s))
+
+    if t_ads:
+        print("\n📈 SCALE ADS (room under target ACOS):")
+        for it, s in t_ads:
+            print("   %-26s +$%.0f/mo budget" % (it["name"][:26], s))
+
+    source_cash = sum(s for _, s in t_source)
+    if t_source:
+        print("\n📦 SOURCE (test batch, profit after fees):")
+        for it, s in t_source:
+            print("   %-26s $%.0f test batch" % (it["name"][:26], s))
+
+    n = len(t_returns) + len(t_inv) + len(t_price) + len(t_ads) + len(t_source)
+    print("\n  ──────────────────────────────────────────────")
+    print("  %d action(s) today · cash out ≈ $%.0f (reorder + source) · monthly upside ≈ $%.0f (reprice + leak fixed)"
+          % (n, reorder_cash + source_cash, uplift + leak))
+
+
 def _parse_sales(text):
     """'drink=500,hookah=120,takeout=85' -> {'drink':500, ...}."""
     out = {}
@@ -305,8 +380,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout", "edges", "arbitrage"),
-                    help="which branch to run (or check / discover / venue / scout / edges / arbitrage)")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
+                    help="a branch, or: command (daily list) / check / discover / venue / scout / edges / arbitrage / outcome")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -335,6 +410,12 @@ def main(argv=None):
     # arbitrage
     ap.add_argument("--asins", help="arbitrage/edges: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
     ap.add_argument("--alt", metavar="CSV", help="arbitrage: cross-channel prices CSV (channel,identifier,price)")
+    # outcome (record a real result -> compounding)
+    ap.add_argument("--id", help="outcome: the decision id to score (e.g. P1)")
+    ap.add_argument("--score", type=float, default=None, help="outcome: numeric result (>0 = it worked)")
+    ap.add_argument("--win", action="store_true", help="outcome: shorthand for --score 1")
+    ap.add_argument("--loss", action="store_true", help="outcome: shorthand for --score -1")
+    ap.add_argument("--outcome-branch", dest="outcome_branch", help="outcome: branch name (default: edges)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -343,6 +424,10 @@ def main(argv=None):
 
     if args.branch == "check":
         return _check()
+    if args.branch == "outcome":
+        return _outcome(args)
+    if args.branch == "command":
+        return _command(args)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
