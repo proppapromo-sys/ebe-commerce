@@ -480,6 +480,84 @@ def _parse_sales(text):
     return out
 
 
+def _db_path(args):
+    from .store import DEFAULT_DB
+    return getattr(args, "db", None) or DEFAULT_DB
+
+
+def _catalog(args):
+    """Load your catalog into the database (the system of record), then show it."""
+    from .store import Store
+    s = Store(_db_path(args))
+    if args.products:
+        from .catalog.csv_io import load_store_rows
+        n = s.upsert_products(load_store_rows(args.products))
+        print("📥 imported %d sellable units from %s" % (n, args.products))
+    elif not s.products():
+        # first run with no file: seed from the sample so there's something to drive
+        from .catalog.csv_io import load_store_rows
+        import os
+        sample = os.path.join(os.path.dirname(__file__), "..", "examples", "products.csv")
+        if os.path.exists(sample):
+            s.upsert_products(load_store_rows(sample))
+            print("📦 seeded sample catalog (pass --products YOUR.csv to load your own)")
+    prods = s.products()
+    print("\n══ CATALOG · %s (%d SKUs) ══" % (s.path, len(prods)))
+    print("  %-22s %8s %8s %8s %8s" % ("SKU", "on_hand", "/mo", "cost", "sell"))
+    for p in prods:
+        print("  %-22s %8d %8d %8.2f %8.2f"
+              % (p["sku"][:22], p["on_hand"], p["monthly_sales"], p["cost"], p["sell"]))
+
+
+def _rebuy(args):
+    """Scan the database; raise a purchase order for every SKU under its reorder line."""
+    from .store import Store
+    from . import autobuy
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    proposals = autobuy.plan(s)
+    if not proposals:
+        print("✅ nothing under the reorder line — every SKU has cover.")
+        return
+    auto = getattr(args, "auto", False)
+    mode = "ORDERED (hands-off)" if auto else "DRAFT (awaiting your approval)"
+    print("\n══ EBE COMMAND · AUTO RE-BUY · %s ══" % mode)
+    raised = autobuy.scan(s, auto=auto, budget=args.budget)
+    total = sum(po["cash"] for po in raised)
+    for po in raised:
+        print("  🚚 PO#%-4d %-24s %5d units  $%8.2f   (%s)"
+              % (po["id"], po["name"][:24], po["qty"], po["cash"], po["reason"]))
+    skipped = len(proposals) - len(raised)
+    tail = "  · %d skipped (budget cap $%.0f)" % (skipped, args.budget) if skipped else ""
+    print("  ── %d POs · $%.2f committed%s" % (len(raised), total, tail))
+    if not auto:
+        print("  approve & receive when stock lands:  python -m ebe orders --receive PO#")
+
+
+def _orders(args):
+    """List purchase orders; approve (mark ordered) or receive (add stock back)."""
+    from .store import Store
+    s = Store(_db_path(args))
+    if args.receive is not None:
+        po = s.receive_po(args.receive)
+        print("📦 received PO#%d → %+d units of %s" % (args.receive, po.get("qty", 0), po.get("name", "?")))
+        return
+    if args.approve is not None:
+        s.mark_ordered(args.approve)
+        print("✅ PO#%d marked ordered" % args.approve)
+        return
+    if getattr(args, "id", None) and getattr(args, "score", None) is None:
+        # `orders --sale SKU --qty N` style handled via --sales? keep orders focused on POs
+        pass
+    pos = s.purchase_orders(status=args.status)
+    label = args.status or "all"
+    print("\n══ PURCHASE ORDERS · %s (%d) ══" % (label, len(pos)))
+    for po in pos:
+        print("  PO#%-4d %-10s %-22s %5d u  $%8.2f  %s"
+              % (po["id"], po["status"], po["name"][:22], po["qty"], po["cash"], po["reason"] or ""))
+
+
 def _venue(args):
     """Venue supply tracking — POS counts -> supplies consumed -> reorder."""
     from .venue import engine
@@ -492,8 +570,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -539,6 +617,12 @@ def main(argv=None):
     ap.add_argument("--win", action="store_true", help="outcome: shorthand for --score 1")
     ap.add_argument("--loss", action="store_true", help="outcome: shorthand for --score -1")
     ap.add_argument("--outcome-branch", dest="outcome_branch", help="outcome: branch name (default: edges)")
+    # database / auto re-buy
+    ap.add_argument("--db", metavar="FILE", help="catalog/rebuy/orders: SQLite system-of-record (default: ebe.db or $EBE_DB)")
+    ap.add_argument("--auto", action="store_true", help="rebuy: place POs hands-off (status 'ordered') instead of drafts")
+    ap.add_argument("--status", help="orders: filter by status (draft|ordered|received|cancelled)")
+    ap.add_argument("--approve", type=int, metavar="PO", help="orders: mark a draft PO as ordered")
+    ap.add_argument("--receive", type=int, metavar="PO", help="orders: receive a PO — adds its units back into stock")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -568,6 +652,12 @@ def main(argv=None):
             return _pipeline(args)
         except AdapterError as e:
             raise SystemExit("pipeline failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
+    if args.branch == "catalog":
+        return _catalog(args)
+    if args.branch == "rebuy":
+        return _rebuy(args)
+    if args.branch == "orders":
+        return _orders(args)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":

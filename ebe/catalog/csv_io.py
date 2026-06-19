@@ -73,6 +73,38 @@ def load_products(path) -> list:
     return [by_id[pid] for pid in order]
 
 
+def load_store_rows(path) -> list:
+    """Read a products CSV into per-sellable-unit dicts for the database (Store).
+
+    A simple product becomes one row keyed by its id; an apparel product becomes one
+    row per size/colour variant, with a unique sku like 'M2·OS·Navy' so each variant
+    carries its own stock and demand for the re-buy engine.
+    """
+    out = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            pid = _s(row, "id")
+            if not pid:
+                continue
+            size, color = _s(row, "size"), _s(row, "color")
+            base = {
+                "name": _s(row, "name", pid), "category": _s(row, "category", "?"),
+                "cost": _f(row, "cost"), "sell": _f(row, "sell"),
+                "fulfilment": _f(row, "fulfilment", 4.0),
+                "lead_time_days": _i(row, "lead_time_days", 21),
+                "on_hand": _i(row, "on_hand"), "monthly_sales": _i(row, "monthly_sales"),
+                "supplier": _s(row, "supplier"),
+            }
+            if size or color:
+                tag = "·".join(x for x in (size, color) if x)
+                base["sku"] = "%s·%s" % (pid, tag)
+                base["name"] = "%s %s" % (base["name"], tag)
+            else:
+                base["sku"] = pid
+            out.append(base)
+    return out
+
+
 def load_campaigns(path) -> list:
     """Read a campaigns CSV into the list[dict] the adspend branch consumes."""
     out = []

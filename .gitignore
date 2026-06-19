@@ -8,3 +8,7 @@ venv/
 .env
 .pytest_cache/
 .DS_Store
+
+# EBE system-of-record databases (local)
+*.db
+ebe.db
