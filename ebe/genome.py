@@ -21,6 +21,7 @@ Run this file for a tiny end-to-end demo:  python -m ebe.genome
 """
 from __future__ import annotations
 
+import math
 import time
 from abc import ABC, abstractmethod
 
@@ -112,11 +113,45 @@ class BlindEyes(Eyes):
         return 0.5
 
 
+# 👁️ LEARNING EYES — trust is read from a table earned on the record (law 4 made real).
+# detect() stays domain-specific in subclasses; trust() graduates patterns as the
+# journal proves them. Build the table with journal.pattern_trust(journal.read()).
+class LearningEyes(Eyes):
+    def __init__(self, trust_table=None):
+        self.trust_table = dict(trust_table or {})
+
+    def trust(self, name):
+        return self.trust_table.get(name, 0.5)   # inert at 0.5 until the record moves it
+
+    def detect(self, item):
+        return []
+
+
 # ── 🩸 TRUTH-METER — the FAST forward-validation signal (CLV / sell-through / …) ─
 class TruthMeter(ABC):
     @abstractmethod
     def score(self, placed_action) -> float:
         """Did you beat the world's later estimate? >0 = real edge, proven fast."""
+
+
+# ── 👂 SANITY GATE — garbage never reaches the Brain ─────────────────────────
+_NONNEG = ("sell", "cost", "fulfilment", "monthly_sales", "on_hand",
+           "competition", "spend", "ad_sales", "lead_time_days")
+
+
+def sane_item(item) -> str:
+    """Return a reason string if the item is impossible to act on, else None.
+    Cheap defence against bad feed rows / scraped junk driving a real decision."""
+    for k in _NONNEG:
+        if k in item:
+            v = item[k]
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                return "%s not numeric" % k
+            if not math.isfinite(v) or v < 0:
+                return "%s invalid (%r)" % (k, v)
+    if "cost" in item and item["cost"] <= 0:
+        return "cost must be > 0"
+    return None
 
 
 # ── 🔄 THE MACHINE — the universal loop + resilience ─────────────────────────
@@ -126,8 +161,10 @@ class Machine:
     process (pair with a supervisor/watchdog for crash + reboot cover)."""
 
     def __init__(self, feed: DataFeed, edge: EdgeModel, risk: Risk, eyes: Eyes,
-                 exe: Execution, name="machine"):
+                 exe: Execution, name="machine", journal=None, guard=None):
         self.feed, self.edge, self.risk, self.eyes, self.exe, self.name = feed, edge, risk, eyes, exe, name
+        self.journal = journal          # optional decision/outcome record (closes the learning loop)
+        self.guard = guard or sane_item  # 👂 sanity gate — bad rows never reach the Brain
 
     def cycle(self, place=False, live=False):
         """One pass. Returns the cleared tickets [(item, stake), ...].
@@ -135,6 +172,9 @@ class Machine:
         tickets = []
         for item in self.feed.candidates():
             iid = item.get("id", "?")
+            bad = self.guard(item)                                     # 👂 reject impossible inputs
+            if bad:
+                print("  drop  %-12s — ⚠️ %s" % (iid, bad)); continue
             e = self.edge.edge(item)
             if self.eyes.veto(item):                                   # 👁️ proven-bad → defensive skip
                 print("  veto  %-12s — 👁️ %s" % (iid, self.eyes.veto(item))); continue
@@ -144,6 +184,9 @@ class Machine:
             conf = self.eyes.confirm(item)
             print("  🎯 %-12s %s%s" % (iid, why, (" · ✅ " + ",".join(conf)) if conf else ""))
             tickets.append((item, stake))                             # ✋ hand to execution (confirm-first)
+            if self.journal:                                          # 📓 write the record (law 4)
+                pats = [p["name"] for p in self.eyes.detect(item)]
+                self.journal.record_decision(self.name, item, stake, e, pats)
         if place:
             for item, stake in tickets:
                 self.exe.place(item, stake, live=live)

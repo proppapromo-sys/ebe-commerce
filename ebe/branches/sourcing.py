@@ -10,7 +10,7 @@ proves it sells). The original EBE "product picker", regrown on the Universal Ge
 """
 from __future__ import annotations
 
-from ..genome import EdgeModel, Risk, Execution, Eyes, Machine
+from ..genome import EdgeModel, Risk, Execution, LearningEyes, Machine
 from ..fees import FeeModel, AMAZON_FBA, MERCH_APPAREL
 
 
@@ -65,7 +65,9 @@ class SourcingExec(Execution):
 
 
 # 👁️ EYES — recognise the kind of product; LEARN which kinds actually sell at profit.
-class SourcingEyes(Eyes):
+# trust() now comes from LearningEyes (a table earned on the journal); pass trust_table=
+# journal.pattern_trust(journal.read()) and proven niches start casting confirm/veto votes.
+class SourcingEyes(LearningEyes):
     def detect(self, p):
         pats = [{"name": "niche:" + p.get("category", "?"), "dir": 1}]
         if p.get("competition", 0) >= 0.8:
@@ -74,10 +76,8 @@ class SourcingEyes(Eyes):
             pats.append({"name": "rising_demand", "dir": 1})
         return pats
 
-    def trust(self, name):
-        return 0.5     # inert until the truth-meter (real sell-through) proves a niche profits
 
-
-def build(feed, capital=2000, fee_model: FeeModel = AMAZON_FBA) -> Machine:
+def build(feed, capital=2000, fee_model: FeeModel = AMAZON_FBA, trust_table=None, journal=None) -> Machine:
     return Machine(feed, SourcingEdge(fee_model), SourcingRisk(capital),
-                   SourcingEyes(), SourcingExec(fee_model), name="sourcing")
+                   SourcingEyes(trust_table), SourcingExec(fee_model),
+                   name="sourcing", journal=journal)

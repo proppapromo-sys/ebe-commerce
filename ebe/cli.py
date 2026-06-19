@@ -30,7 +30,7 @@ from .branches import sourcing, pricing, inventory, adspend
 BRANCHES = ("sourcing", "pricing", "inventory", "adspend")
 
 
-def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False):
+def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None):
     if name == "sourcing" and keepa_products is not None:
         prods, src = keepa_products, "Keepa LIVE"
     elif products is not None or campaigns is not None:
@@ -58,6 +58,8 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False):
         m = adspend.build(campaigns=campaigns, fee_model=fee_model)
     else:
         raise SystemExit("unknown branch: %s" % name)
+    if journal is not None:
+        m.journal = journal          # 📓 record decisions for the learning loop
     tickets = m.cycle(place=place)
     print("  → %d action(s) cleared." % len(tickets))
     return tickets
@@ -147,6 +149,7 @@ def main(argv=None):
                     help="asin,cost CSV -> LIVE sourcing via Keepa (needs KEEPA_API_KEY)")
     ap.add_argument("--ai", action="store_true",
                     help="use the Claude AI brain for sourcing (needs ANTHROPIC_API_KEY + anthropic SDK)")
+    ap.add_argument("--journal", metavar="JSONL", help="append every cleared decision to this record (learning loop)")
     # discover filters (Keepa Product Finder)
     ap.add_argument("--category", help="discover: category (home, kitchen, health, beauty, sports, toys, pet, office, garden, baby, electronics, apparel)")
     ap.add_argument("--min-sales", type=int, default=300, dest="min_sales", help="discover: min monthly units sold (default 300)")
@@ -179,10 +182,14 @@ def main(argv=None):
             raise SystemExit("Keepa live sourcing failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
 
     from .adapters.base import AdapterError
+    journal = None
+    if args.journal:
+        from .journal import Journal
+        journal = Journal(args.journal)
     names = BRANCHES if args.branch == "all" else (args.branch,)
     for name in names:
         try:
-            _run(name, fee_model, args.place, products, campaigns, keepa_products, ai=args.ai)
+            _run(name, fee_model, args.place, products, campaigns, keepa_products, ai=args.ai, journal=journal)
         except AdapterError as e:
             raise SystemExit("%s failed: %s\n(run `python -m ebe check`, see SETUP.md)" % (name, e))
 
