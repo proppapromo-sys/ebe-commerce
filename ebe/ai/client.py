@@ -14,9 +14,12 @@ import json
 from ..adapters import config
 from ..adapters.base import AdapterError
 
-# The BRAIN runs the hard reasoning -> default to the most capable model.
-# (High-volume Eyes/Ears organs would use claude-haiku-4-5; wire those later.)
+# The BRAIN runs the hard reasoning -> the most capable model.
+# High-volume EYES/EARS organs use Haiku — cheap recognition over many items.
 MODEL = "claude-opus-4-8"
+MODEL_FAST = "claude-haiku-4-5"
+
+_THINKS = ("claude-opus", "claude-sonnet", "claude-fable")   # models that take adaptive thinking
 
 
 def get_client():
@@ -42,18 +45,23 @@ def available():
         return False
 
 
-def ask_json(system, user, schema, max_tokens=2000):
-    """One structured call: returns Claude's answer parsed against `schema`."""
+def ask_json(system, user, schema, max_tokens=2000, model=None, images=None):
+    """One structured call: returns Claude's answer parsed against `schema`.
+    Pass `model` (e.g. MODEL_FAST for Eyes) and optional `images` (URLs) for vision."""
     client = get_client()
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        system=system,
-        thinking={"type": "adaptive"},
-        output_config={"format": {"type": "json_schema", "schema": schema}},
-        messages=[{"role": "user", "content": user}],
-    )
+    model = model or MODEL
+    content = []
+    for url in (images or []):
+        content.append({"type": "image", "source": {"type": "url", "url": url}})
+    content.append({"type": "text", "text": user})
+
+    kwargs = dict(model=model, max_tokens=max_tokens, system=system,
+                  output_config={"format": {"type": "json_schema", "schema": schema}},
+                  messages=[{"role": "user", "content": content}])
+    if model.startswith(_THINKS):               # Haiku doesn't take adaptive thinking
+        kwargs["thinking"] = {"type": "adaptive"}
+    resp = client.messages.create(**kwargs)
     if resp.stop_reason == "refusal":           # safety classifier declined — handle, don't crash
-        raise AdapterError("Claude declined to assess this item")
+        raise AdapterError("Claude declined this request")
     text = next((b.text for b in resp.content if b.type == "text"), "")
     return json.loads(text)

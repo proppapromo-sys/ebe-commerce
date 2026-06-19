@@ -38,7 +38,7 @@ def _maybe_apply_costs(products, args):
     return products
 
 
-def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None, portfolio=None, costs=None):
+def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None, portfolio=None, costs=None, ai_eyes=False):
     def _cost(ps):
         if costs and ps:
             from .costs import apply_costs
@@ -52,6 +52,8 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, 
         prods, src = None, "sample data"
     if name == "sourcing" and ai:
         src += " · 🧠 AI brain"
+    if name == "sourcing" and ai_eyes:
+        src += " · 👁️ AI eyes"
     print("\n══ %s ══ (fees: %s · %s%s)" % (name.upper(), fee_model.name, src, " · real costs" if costs else ""))
 
     if name == "sourcing":
@@ -60,7 +62,11 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, 
             from .ai import brain
             m = brain.build(ListFeed(prods), fee_model=fee_model)
         else:
-            m = sourcing.build(ListFeed(prods), fee_model=fee_model)
+            eyes = None
+            if ai_eyes:
+                from .ai.eyes import AIEyes
+                eyes = AIEyes()
+            m = sourcing.build(ListFeed(prods), fee_model=fee_model, eyes=eyes)
     elif name == "pricing":
         prods = _cost(products if products is not None else sample_live_catalog())
         m = pricing.build(ListFeed(prods), fee_model=fee_model)
@@ -447,6 +453,8 @@ def main(argv=None):
                     help="asin,cost CSV -> LIVE sourcing via Keepa (needs KEEPA_API_KEY)")
     ap.add_argument("--ai", action="store_true",
                     help="use the Claude AI brain for sourcing (needs ANTHROPIC_API_KEY + anthropic SDK)")
+    ap.add_argument("--ai-eyes", action="store_true", dest="ai_eyes",
+                    help="use the Claude AI eyes for sourcing — recognise product patterns (Haiku)")
     ap.add_argument("--journal", metavar="JSONL", help="append every cleared decision to this record (learning loop)")
     ap.add_argument("--budget", type=float, default=None, help="cap total $ committed across all cleared actions this run (portfolio exposure)")
     ap.add_argument("--max-calls", type=int, default=None, dest="max_calls", help="cap outbound API calls this run (Keepa/Anthropic/Amazon cost safety)")
@@ -542,7 +550,7 @@ def main(argv=None):
     for name in names:
         try:
             _run(name, fee_model, args.place, products, campaigns, keepa_products,
-                 ai=args.ai, journal=journal, portfolio=portfolio, costs=costs_sheet)
+                 ai=args.ai, journal=journal, portfolio=portfolio, costs=costs_sheet, ai_eyes=args.ai_eyes)
         except AdapterError as e:
             raise SystemExit("%s failed: %s\n(run `python -m ebe check`, see SETUP.md)" % (name, e))
 

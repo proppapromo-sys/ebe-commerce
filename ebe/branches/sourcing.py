@@ -77,7 +77,7 @@ class SourcingEyes(LearningEyes):
         return pats
 
 
-def build(feed, capital=2000, fee_model: FeeModel = AMAZON_FBA, trust_table=None, journal=None) -> Machine:
+def build(feed, capital=2000, fee_model: FeeModel = AMAZON_FBA, trust_table=None, journal=None, eyes=None) -> Machine:
+    eyes = eyes if eyes is not None else SourcingEyes(trust_table)
     return Machine(feed, SourcingEdge(fee_model), SourcingRisk(capital),
-                   SourcingEyes(trust_table), SourcingExec(fee_model),
-                   name="sourcing", journal=journal)
+                   eyes, SourcingExec(fee_model), name="sourcing", journal=journal)

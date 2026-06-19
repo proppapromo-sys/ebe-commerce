@@ -165,8 +165,15 @@ AI lives inside specific organs and is bounded by the five laws — never given 
 | 👁️ Eyes | recognize products / trends | a pattern graduates only on proof |
 | 🩸 TruthMeter | **none** — measures real sell-through | ✅ **keeps AI honest** |
 
-Shipped today: the **AI Brain**. Next: AI Eyes (trend/product recognition) and Ears
-(supplier-data normalization), on `claude-haiku-4-5` for cheap high volume.
+Shipped: the **AI Brain** (Opus, demand+confidence) and **AI Eyes** (Haiku, pattern
+recognition). Next: AI Ears (supplier-data normalization).
+
+```bash
+python -m ebe sourcing --ai-eyes      # Claude names product patterns (premium / trend:rising /
+                                      # saturated-design / giftable …); they graduate only on the journal
+```
+AI Eyes only *names* what it sees; whether a pattern earns a confirm/veto vote is the genome's
+call (`LearningEyes.trust()` from the record). It can read a product **image** too (vision).
 
 | Branch | Question it answers | Edge = |
 |---|---|---|
@@ -413,7 +420,8 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
-- [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
+- [x] AI Eyes — Claude (Haiku) recognises product patterns (+ optional image vision), caged by the journal
+- [ ] AI Ears (supplier-data normalization) on Haiku
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns
