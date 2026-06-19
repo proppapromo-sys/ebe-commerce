@@ -58,7 +58,10 @@ def recurrence_edge(it):
 
 
 def timing_edge(it):
-    """Momentum — riding a rising trend beats fighting a fading one."""
+    """Momentum — riding a rising trend beats fighting a fading one. Uses a live rank-momentum
+    score when attached (see ebe.timing), else a trend label, else neutral."""
+    if "tim_edge" in it:
+        return _clamp(it["tim_edge"])
     return TREND.get(it.get("trend", "flat"), 0.5)
 
 

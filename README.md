@@ -237,6 +237,14 @@ python -m ebe edges --profile hookah
 
 High margin with a thin moat is a treadmill; the engine steers you to the lanes you can own.
 
+Run it on **live** ASINs and the engine fuses real data on every angle — margin/demand/
+competition from Keepa, **live arbitrage** (price dip), and **live timing** (sales-rank momentum:
+rising vs fading):
+
+```bash
+python -m ebe edges --asins "B08VRZTHDL,B0BTD83JZR" --profile hookah --cost-ratio 0.35
+```
+
 ### Live arbitrage — buy low, sell high (real Keepa data)
 
 `arbitrage` reads each ASIN's price against its own **90-day average and low** and flags what's
@@ -297,6 +305,7 @@ ebe/
   profile.py           # operator profiles — personalise every branch to who you are
   edges.py             # true edge — fuse 7 edge angles, flag what's CORNERABLE
   arbitrage.py         # buy-low/sell-high: temporal (Keepa) now, cross-channel pluggable
+  timing.py            # sales-rank momentum — rising vs fading (live `tim` angle)
   branches/scout.py    # read a market through your profile (landscape + ranked opportunities)
   journal.py           # the record: decisions + outcomes (learning loop)
   cli.py / __main__.py # python -m ebe <branch>
@@ -316,6 +325,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Profiles + `scout` — personalised market landscape + ranked opportunities per operator
 - [x] `edges` — fuse 7 edge angles into a true-edge score; flag defensible, cornerable lanes
 - [x] `arbitrage` — live temporal buy-the-dip (Keepa); cross-channel via pluggable PriceSource
+- [x] Live `edges` — the true-edge engine on real ASINs: live arbitrage + live rank-momentum timing fused in
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku

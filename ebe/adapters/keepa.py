@@ -130,6 +130,45 @@ def keepa_price_points(kp):
     return pts
 
 
+_RANK_IDX = 3       # Keepa price-type index 3 = SALES rank
+
+
+def _rank_of(v):
+    if isinstance(v, list) and v:
+        v = v[-1]
+    return int(v) if isinstance(v, (int, float)) and v > 0 else None
+
+
+def _stat_rank(stats, key):
+    arr = stats.get(key)
+    if isinstance(arr, list) and len(arr) > _RANK_IDX:
+        return _rank_of(arr[_RANK_IDX])
+    return None
+
+
+def keepa_rank_points(kp):
+    """{current_rank, avg_rank} sales rank over Keepa's stats window (lower = selling more)."""
+    st = kp.get("stats") or {}
+    return {
+        "current_rank": _stat_rank(st, "current") or kp.get("salesRank"),
+        "avg_rank": _stat_rank(st, "avg") or _stat_rank(st, "avg90") or _stat_rank(st, "avg30"),
+    }
+
+
+def live_edge_item(kp, cost_ratio=0.35):
+    """Assemble ONE true-edge item from a live Keepa product: sell/demand/competition/category
+    + an assumed cost + LIVE arbitrage (price dip) + LIVE timing (rank momentum)."""
+    from ..arbitrage import signal as arb_signal
+    from ..timing import momentum
+    sell = keepa_sell_price(kp)
+    it = to_product(kp, cost=round(sell * cost_ratio, 2)).as_item()
+    arb = arb_signal(keepa_price_points(kp))
+    if arb:
+        it["arb_edge"] = arb.edge
+    it["tim_edge"], it["_trend"] = momentum(keepa_rank_points(kp))
+    return it
+
+
 def keepa_competition(kp):
     """Rough 0..1 saturation from the live offer count (more sellers -> more crowded)."""
     stats = kp.get("stats") or {}

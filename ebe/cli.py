@@ -181,9 +181,23 @@ def _edges(args):
     if prof is None:
         raise SystemExit("unknown profile '%s' (choices: %s)" % (args.profile, ", ".join(sorted(PROFILES))))
     fee_model = PRESETS[args.fees]
-    rows = scout.sample_market()
 
-    print("\n══ EBE COMMAND · TRUE EDGE ══ (profile: %s · %s)" % (prof.name, fee_model.name))
+    live = False
+    if args.asins:
+        from .adapters.base import AdapterError
+        from .adapters.keepa import KeepaClient, live_edge_item
+        asins = [a.strip() for a in args.asins.split(",") if a.strip()]
+        try:
+            client = KeepaClient()
+            rows = [live_edge_item(kp, args.cost_ratio) for kp in client.fetch(asins)]
+        except AdapterError as e:
+            raise SystemExit("edges (live) failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
+        live = True
+    else:
+        rows = scout.sample_market()
+
+    print("\n══ EBE COMMAND · TRUE EDGE ══ (profile: %s · %s · %s)"
+          % (prof.name, fee_model.name, "Keepa LIVE" if live else "sample"))
     w = edgemod.weights_for(prof)
     print("  angle weights: " + " ".join("%s %.0f%%" % (k, v * 100) for k, v in w.items()))
     print("\n  product                       mrg dmd cmp adv rec tim arb | EDGE moat  verdict")
