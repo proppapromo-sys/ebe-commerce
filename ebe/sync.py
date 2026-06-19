@@ -14,15 +14,33 @@ from __future__ import annotations
 from .store import Store
 
 
-def sync_stock(store: Store, client, prices=False) -> dict:
-    """Update on_hand (and optionally sell price) for SKUs Amazon reports.
-
-    `client` is anything exposing fba_inventory() and (if prices) my_price(skus) —
-    the real SpApiClient, or a stub in tests. Returns a summary dict.
-    """
+def _stock_map(client):
+    """{sku: units} from any channel — generic .stock() preferred, Amazon FBA as fallback."""
+    if hasattr(client, "stock"):
+        return client.stock()
     from .adapters.amazon_spapi import inventory_to_stock
+    return inventory_to_stock(client.fba_inventory())
 
-    stock = inventory_to_stock(client.fba_inventory())
+
+def _price_rows(client, skus):
+    """[{sku, price}] from any channel — generic .prices() preferred, Amazon pricing as fallback."""
+    if hasattr(client, "prices"):
+        return client.prices(skus)
+    rows = []
+    for row in client.my_price(skus):
+        sku, amount = _price_of(row)
+        rows.append({"sku": sku, "price": amount})
+    return rows
+
+
+def sync_stock(store: Store, client, prices=False) -> dict:
+    """Update on_hand (and optionally sell price) for SKUs the channel reports.
+
+    `client` is any channel exposing stock() -> {sku: units} (Shopify, …) or the
+    Amazon SpApiClient (fba_inventory). Returns a summary dict. Unknown SKUs are
+    reported, never created.
+    """
+    stock = _stock_map(client)
     known = {p["sku"] for p in store.products()}
     updated, unknown = [], []
     for sku, units in stock.items():
@@ -35,8 +53,8 @@ def sync_stock(store: Store, client, prices=False) -> dict:
     priced = []
     if prices and updated:
         try:
-            for row in client.my_price([s for s, _ in updated]):
-                sku, amount = _price_of(row)
+            for row in _price_rows(client, [s for s, _ in updated]):
+                sku, amount = row.get("sku"), row.get("price")
                 if sku in known and amount:
                     p = store.product(sku)
                     if p:

@@ -117,6 +117,16 @@ def _check():
                 else:
                     ping()                      # real call — raises on a bad key / no credit
                     print("  ● %-12s OK · key valid (live ping)" % name)
+            elif name == "shopify":
+                from .adapters.shopify import ShopifyClient
+                ShopifyClient().check()
+                print("  ● %-12s OK · shop reachable" % name)
+            elif name == "square":
+                from .adapters.square import SquareClient
+                SquareClient().check()
+                print("  ● %-12s OK · locations reachable" % name)
+            else:
+                print("  ● %-12s configured" % name)
         except Exception as e:
             print("  ✕ %-12s configured but FAILED: %s" % (name, e))
     print("\n(fill .env from .env.example — see SETUP.md)")
@@ -622,24 +632,51 @@ def _po(args):
         print(doc)
 
 
+def _connections(args):
+    """Show every integration: what it does, whether it's configured, and where to sign up."""
+    from .adapters import config
+    live = [(n, m) for n, m in config.INTEGRATIONS.items() if m["status"] == "live"]
+    planned = [(n, m) for n, m in config.INTEGRATIONS.items() if m["status"] == "planned"]
+    print("\n══ EBE COMMAND · CONNECTIONS ══\n")
+    print("LIVE (adapter built — add keys to .env to switch on):")
+    for n, m in live:
+        mark = "●" if not config.require(m["keys"]) else "○"
+        print("  %s %-12s %s" % (mark, n, m["role"]))
+        print("       sign up: %s   keys: %s" % (m["signup"], ", ".join(m["keys"])))
+    print("\nPLANNED (sign up now — say the word and I build the adapter):")
+    for n, m in planned:
+        print("  ＋ %-12s %s" % (n, m["role"]))
+        print("       sign up: %s" % m["signup"])
+    print("\n● configured   ○ not yet   ＋ planned   ·   run `python -m ebe check` to validate live keys")
+
+
+def _channel_client(args):
+    """Build the sync client for the chosen --channel (default amazon)."""
+    ch = (getattr(args, "channel", None) or "amazon").lower()
+    if ch == "shopify":
+        from .adapters.shopify import ShopifyClient
+        return "Shopify", ShopifyClient()
+    from .adapters.amazon_spapi import SpApiClient
+    return "Amazon SP-API", SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
+
+
 def _sync(args):
-    """Pull live Amazon stock into the database, then show what moved."""
+    """Pull live channel stock (Amazon/Shopify) into the database, then show what moved."""
     from .store import Store
     from .sync import sync_stock
-    from .adapters.amazon_spapi import SpApiClient
     s = Store(_db_path(args))
     if not s.products():
         raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
-    client = SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
+    label, client = _channel_client(args)
     res = sync_stock(s, client, prices=getattr(args, "with_prices", False))
-    print("\n══ EBE COMMAND · LIVE STOCK SYNC (Amazon SP-API) ══")
+    print("\n══ EBE COMMAND · LIVE STOCK SYNC (%s) ══" % label)
     for sku, units in res["updated"]:
         print("  ✓ %-24s on_hand → %d" % (sku[:24], units))
     if res["priced"]:
         for sku, amount in res["priced"]:
             print("  $ %-24s sell → %.2f" % (sku[:24], amount))
     if res["unknown"]:
-        print("  ⚠ %d SKU(s) Amazon reports but not in your catalog: %s"
+        print("  ⚠ %d SKU(s) the channel reports but not in your catalog: %s"
               % (len(res["unknown"]), ", ".join(res["unknown"][:8])))
     print("  ── %d SKUs updated. Now run:  python -m ebe rebuy" % len(res["updated"]))
 
@@ -649,15 +686,24 @@ def _venue(args):
     from .venue import engine
     from .venue.sample import sample_menu, sample_consumables, sample_sales
     menu, consumables = sample_menu(), sample_consumables()
-    sales = _parse_sales(args.sales) if args.sales else sample_sales()
+    if getattr(args, "square", False):
+        from .adapters.square import SquareClient
+        from .adapters.base import AdapterError
+        try:
+            sales = SquareClient().sales(days=args.period)
+            print("🟦 pulled %d line-item(s) from Square (last %dd)" % (len(sales), args.period))
+        except AdapterError as e:
+            raise SystemExit("Square pull failed: %s\n(run `python -m ebe check`)" % e)
+    else:
+        sales = _parse_sales(args.sales) if args.sales else sample_sales()
     print("\n══ EBE COMMAND · VENUE SUPPLY ══")
     engine.run(sales, menu, consumables, period_days=args.period, place=True)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -713,6 +759,8 @@ def main(argv=None):
     ap.add_argument("--marketplace", help="sync: marketplace us|ca|uk|de|... (default us)")
     ap.add_argument("--with-prices", action="store_true", dest="with_prices", help="sync: also pull your live listing prices")
     ap.add_argument("--units", type=int, help="sell: units sold for --id SKU (drops on-hand stock)")
+    ap.add_argument("--channel", help="sync: which channel to pull from (amazon|shopify; default amazon)")
+    ap.add_argument("--square", action="store_true", help="venue: pull real sales from Square POS (needs SQUARE_TOKEN)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -721,6 +769,8 @@ def main(argv=None):
 
     if args.branch == "check":
         return _check()
+    if args.branch == "connections":
+        return _connections(args)
     if args.branch == "outcome":
         return _outcome(args)
     if args.branch == "command":

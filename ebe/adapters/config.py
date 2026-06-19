@@ -40,9 +40,47 @@ def require(keys):
 
 
 # Which env vars each integration needs:
-NEEDS = {
-    "keepa": ["KEEPA_API_KEY"],
-    "amazon": ["SPAPI_REFRESH_TOKEN", "SPAPI_CLIENT_ID", "SPAPI_CLIENT_SECRET"],
-    "amazon-ads": ["ADS_REFRESH_TOKEN", "ADS_CLIENT_ID", "ADS_CLIENT_SECRET", "ADS_PROFILE_ID"],
-    "ai": ["ANTHROPIC_API_KEY"],
+# The full integration catalogue — one source of truth for the doctor (`check`),
+# the connections map (`connections`), and docs/INTEGRATIONS.md.
+# status: "live" = adapter built & wired · "planned" = sign up now, adapter ready to build.
+INTEGRATIONS = {
+    "ai":          {"label": "Anthropic (AI brain)", "keys": ["ANTHROPIC_API_KEY"],
+                    "signup": "https://console.anthropic.com", "status": "live",
+                    "role": "The brain — demand calls, AI eyes/ears, written daily brief"},
+    "keepa":       {"label": "Keepa (market data)", "keys": ["KEEPA_API_KEY"],
+                    "signup": "https://keepa.com/#!api", "status": "live",
+                    "role": "Live price/sales/rank, Product Finder, buy-the-dip arbitrage"},
+    "amazon":      {"label": "Amazon Selling Partner API", "keys": ["SPAPI_REFRESH_TOKEN", "SPAPI_CLIENT_ID", "SPAPI_CLIENT_SECRET"],
+                    "signup": "https://sellercentral.amazon.com", "status": "live",
+                    "role": "Your real listings, stock & prices → the database (sync)"},
+    "amazon-ads":  {"label": "Amazon Ads API", "keys": ["ADS_REFRESH_TOKEN", "ADS_CLIENT_ID", "ADS_CLIENT_SECRET", "ADS_PROFILE_ID"],
+                    "signup": "https://advertising.amazon.com/API/docs", "status": "live",
+                    "role": "Campaign spend/sales → scale winners, cut bleeders"},
+    "shopify":     {"label": "Shopify (your DTC store)", "keys": ["SHOPIFY_STORE", "SHOPIFY_TOKEN"],
+                    "signup": "https://www.shopify.com", "status": "live",
+                    "role": "Own-brand storefront — stock & price sync into the database"},
+    "square":      {"label": "Square (venue POS)", "keys": ["SQUARE_TOKEN", "SQUARE_LOCATION_ID"],
+                    "signup": "https://squareup.com/pos", "status": "live",
+                    "role": "Pull real venue sales → consumption → auto-reorder supplies"},
+    "ebay":        {"label": "eBay", "keys": ["EBAY_TOKEN"],
+                    "signup": "https://developer.ebay.com", "status": "planned",
+                    "role": "Second resale channel for merch & overstock"},
+    "etsy":        {"label": "Etsy", "keys": ["ETSY_API_KEY", "ETSY_TOKEN"],
+                    "signup": "https://www.etsy.com/developers", "status": "planned",
+                    "role": "Handmade/print apparel channel"},
+    "walmart":     {"label": "Walmart Marketplace", "keys": ["WALMART_CLIENT_ID", "WALMART_CLIENT_SECRET"],
+                    "signup": "https://marketplace.walmart.com", "status": "planned",
+                    "role": "High-volume third channel once Amazon is humming"},
+    "tiktok":      {"label": "TikTok Shop", "keys": ["TIKTOK_APP_KEY", "TIKTOK_APP_SECRET"],
+                    "signup": "https://seller-us.tiktok.com", "status": "planned",
+                    "role": "Social-commerce for the merch/brand play"},
+    "printful":    {"label": "Printful (print-on-demand)", "keys": ["PRINTFUL_TOKEN"],
+                    "signup": "https://www.printful.com", "status": "planned",
+                    "role": "Auto-fulfil own-brand apparel — no inventory risk"},
+    "stripe":      {"label": "Stripe (payments)", "keys": ["STRIPE_SECRET_KEY"],
+                    "signup": "https://stripe.com", "status": "planned",
+                    "role": "Direct payments + true cash-in for the forecast"},
 }
+
+# Which env vars each LIVE integration needs (derived; the doctor validates these):
+NEEDS = {name: meta["keys"] for name, meta in INTEGRATIONS.items() if meta["status"] == "live"}
