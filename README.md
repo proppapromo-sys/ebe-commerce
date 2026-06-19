@@ -204,6 +204,20 @@ Machine(my_feed, MyEdge(), MyRisk(bankroll=2000), BlindEyes(), MyHands()).cycle(
 
 ---
 
+## Start a new project from the genome
+
+The whole evolved skeleton is packaged as a **single self-contained seed** —
+[`seed/universal_genome.py`](seed/universal_genome.py) (pure stdlib, ~300 lines): the seven
+organs, Portfolio, LearningEyes, sanity gate, Journal, and `pattern_trust`/`category_trust`,
+with a runnable end-to-end demo. Copy it into any new project and grow a risk-first,
+self-learning engine for any domain. See [`seed/SEED.md`](seed/SEED.md).
+
+```bash
+cp seed/universal_genome.py ~/my-new-project/genome.py && python ~/my-new-project/genome.py
+```
+
+---
+
 ## Scout the landscape — personalised to you
 
 The engine isn't one strategy; it's a lens on the whole market, tuned to *you*. A **Profile**
