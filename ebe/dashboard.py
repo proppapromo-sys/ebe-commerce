@@ -48,14 +48,25 @@ def _data(args):
     win = forecast.windows(cal)
     prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
     market = scout.sample_market()
-    ranked = edgemod.rank(market, prof, fee)
+
+    learned, jstats = None, None
+    journal_path = getattr(args, "journal", None)
+    if journal_path:
+        from .journal import Journal, category_trust
+        recs = Journal(journal_path).read()
+        learned = category_trust(recs)
+        jstats = {"decisions": sum(1 for r in recs if r.get("kind") == "decision"),
+                  "outcomes": sum(1 for r in recs if r.get("kind") == "outcome"),
+                  "trust": learned}
+
+    ranked = edgemod.rank(market, prof, fee, learned=learned)
     land = scout.landscape(market, prof, fee)
     from .venue.sample import sample_menu, sample_consumables, sample_sales
     venue_cal = forecast.venue_calendar(sample_sales(), sample_menu(), sample_consumables())
     return dict(fee=fee, prof=prof, capital=args.capital,
                 ret=t_ret, inv=t_inv, pr=t_pr, ad=t_ad, src=t_src,
                 cal=cal, win=win, ed=ranked, land=land, venue=venue_cal,
-                profiles=sorted(PROFILES))
+                profiles=sorted(PROFILES), journal=journal_path, jstats=jstats)
 
 
 _CSS = """
@@ -145,12 +156,34 @@ def render(d):
         out.append("</table>")
 
     # ── TRUE EDGE ──
-    out.append("<h2>🧭 True edge (scout)</h2>")
-    out.append("<table><tr><th>product<th class=r>EDGE<th class=r>moat<th>verdict</tr>")
+    jr = d.get("journal")
+    out.append("<h2>🧭 True edge (scout)%s</h2>" % (" · 🔁 learned" if d.get("jstats") and d["jstats"]["trust"] else ""))
+    out.append("<table><tr><th>product<th class=r>EDGE<th class=r>moat<th>verdict%s</tr>" % ("<th>mark" if jr else ""))
     for e in d["ed"]:
-        out.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span></tr>"
-                   % (_esc(e.item["name"]), e.composite * 100, e.moat * 100, e.verdict, e.verdict))
+        mark = ""
+        if jr:
+            iid = urllib.parse.quote(str(e.item.get("id", "")))
+            cat = urllib.parse.quote(str(e.item.get("category", "")))
+            mark = ("<td><a href='/record?id=%s&cat=%s&score=1'>✓ win</a> "
+                    "<a href='/record?id=%s&cat=%s&score=-1'>✗ loss</a>") % (iid, cat, iid, cat)
+        out.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span>%s</tr>"
+                   % (_esc(e.item["name"]), e.composite * 100, e.moat * 100, e.verdict, e.verdict, mark))
     out.append("</table>")
+
+    # ── LEARNING (compounding) ──
+    if d.get("jstats"):
+        js = d["jstats"]
+        out.append("<h2>🔁 Learning</h2>")
+        out.append("<div class=card>%d decision(s) · %d outcome(s) recorded → %s</div>"
+                   % (js["decisions"], js["outcomes"], _esc(jr)))
+        if js["trust"]:
+            out.append("<table><tr><th>category<th class=r>proven trust</tr>")
+            for c, t in sorted(js["trust"].items(), key=lambda kv: -kv[1]):
+                cls = "ok" if t >= 0.55 else ("warn" if t < 0.45 else "")
+                out.append("<tr><td>%s<td class=r><span class=%s>%.0f%%</span></tr>" % (_esc(c), cls, t * 100))
+            out.append("</table>")
+        else:
+            out.append("<div class=sub>mark a few ✓/✗ on the edge table above, then refresh — proven categories will rise.</div>")
 
     # ── LANDSCAPE ──
     out.append("<h2>🗺️ Landscape</h2>")
@@ -196,6 +229,18 @@ def serve(args):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             path, _, query = self.path.partition("?")
+            if path == "/record":                       # record an outcome, then bounce home
+                jr = getattr(args, "journal", None)
+                qs = urllib.parse.parse_qs(query)
+                if jr and qs.get("id"):
+                    from .journal import Journal
+                    try:
+                        sc = float(qs.get("score", ["1"])[0])
+                    except ValueError:
+                        sc = 1.0
+                    Journal(jr).record_outcome("edges", qs["id"][0], sc,
+                                               category=(qs.get("cat") or [None])[0])
+                self.send_response(303); self.send_header("Location", "/"); self.end_headers(); return
             if path not in ("/", ""):
                 self.send_response(404); self.end_headers(); return
             try:

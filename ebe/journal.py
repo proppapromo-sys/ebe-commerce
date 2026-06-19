@@ -35,11 +35,11 @@ class Journal:
             "stake": stake, "edge": edge, "patterns": list(patterns or []),
         })
 
-    def record_outcome(self, branch, item_id, score, patterns=None) -> dict:
+    def record_outcome(self, branch, item_id, score, patterns=None, category=None) -> dict:
         """score > 0 means the action proved out (sold through / beat the world)."""
         return self.append({
-            "kind": "outcome", "branch": branch, "id": item_id,
-            "score": score, "patterns": list(patterns or []),
+            "kind": "outcome", "branch": branch, "id": item_id, "score": score,
+            "category": category, "patterns": list(patterns or []),
         })
 
     def read(self) -> list:

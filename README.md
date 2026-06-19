@@ -19,7 +19,14 @@ python -m ebe command         # ONE consolidated action list across every branch
 ```
 
 `dashboard` is a pure-stdlib web UI (zero dependencies): today's actions, the cash forecast,
-and the true-edge table on one auto-refreshing page.
+the scout landscape, venue supplies, and the true-edge table on one auto-refreshing page —
+with a clickable profile switcher. Point it at a journal and you can **mark ✓ win / ✗ loss on
+each edge row**; the Learning panel shows proven-category trust and the edge table re-ranks
+itself — the compounding loop, on screen:
+
+```bash
+python -m ebe dashboard --journal record.jsonl --profile hookah
+```
 ```
 ══ EBE COMMAND · TODAY ══
 🩹 STOP THE LEAK   🚚 REORDER   🏷️ REPRICE   📈 SCALE ADS   📦 SOURCE
@@ -402,7 +409,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
 - [x] `forecast` — forward cash-flow (store + venue) with a capital runway/solvency check
 - [x] Cost-merge — overlay a real `sku,cost` sheet (and SP-API stock) onto any run via `--costs`
-- [x] `dashboard` — pure-stdlib web UI: today + forecast + true-edge in a browser (zero deps)
+- [x] `dashboard` — pure-stdlib web UI: today + forecast + landscape + venue + true-edge, profile switcher, click-to-record outcomes + Learning panel (zero deps)
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue

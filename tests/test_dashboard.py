@@ -5,7 +5,8 @@ from ebe import dashboard
 
 
 def _args(**kw):
-    base = dict(fees="amazon-fba", products=None, costs=None, profile="hookah", capital=None, port=None)
+    base = dict(fees="amazon-fba", products=None, costs=None, profile="hookah",
+                capital=None, port=None, journal=None)
     base.update(kw)
     return types.SimpleNamespace(**base)
 
@@ -46,6 +47,23 @@ class DashboardRenderTests(unittest.TestCase):
         a = dashboard._req_args(_args(profile="generic"), "profile=hookah&capital=2500")
         self.assertEqual(a.profile, "hookah")
         self.assertEqual(a.capital, 2500.0)
+
+    def test_learning_panel_and_buttons_with_journal(self):
+        import os
+        import tempfile
+        from ebe.journal import Journal
+        fd, path = tempfile.mkstemp(suffix=".jsonl")
+        os.close(fd)
+        try:
+            j = Journal(path)
+            for i in range(8):                          # hookah proven winner
+                j.record_outcome("edges", "hk%d" % i, 1.0, category="hookah")
+            page = dashboard.render(dashboard._data(_args(journal=path)))
+            self.assertIn("Learning", page)
+            self.assertIn("/record?id=", page)          # clickable win/loss buttons
+            self.assertIn("hookah", page)               # proven category in the trust table
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":
