@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bom.py — EBE Venue OS, the core mechanic: a "bill of materials" per thing you SELL.
+bom.py — venue supply tracking, the core mechanic: a "bill of materials" per thing you SELL.
 
 A venue doesn't sell cups — it sells drinks, hookahs, takeout orders. Each of those
 quietly CONSUMES supplies. The BOM is the recipe: 1 hookah = 1 foil + 4 charcoal + 1 tip.

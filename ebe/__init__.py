@@ -1,5 +1,5 @@
 """
-EBE Commerce — a risk-first seller engine for marketplaces (Amazon-style + your own merch).
+EBE Command — a risk-first seller engine for marketplaces (Amazon-style + your own merch).
 
 One Universal Genome, many branches. Each branch is the SAME loop with different cells:
   • sourcing   — which products to buy in (profit after every fee, test-batch first)

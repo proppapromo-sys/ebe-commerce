@@ -72,7 +72,7 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, 
 def _check():
     """Doctor: report which integrations have credentials and can reach their API."""
     from .adapters import config
-    print("EBE Commerce — integration check\n")
+    print("EBE Command — integration check\n")
     for name, needs in config.NEEDS.items():
         missing = config.require(needs)
         if missing:
@@ -140,6 +140,33 @@ def _discover(args, fee_model):
     print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
 
 
+def _scout(args):
+    """Survey a market through a Profile — landscape map + ranked, personalised opportunities."""
+    from .profile import PROFILES
+    from .branches import scout
+    prof = PROFILES.get(args.profile or "generic")
+    if prof is None:
+        raise SystemExit("unknown profile '%s' (choices: %s)" % (args.profile, ", ".join(sorted(PROFILES))))
+    fee_model = PRESETS[args.fees]
+    rows = scout.sample_market()
+
+    print("\n══ EBE COMMAND · SCOUT ══ (profile: %s · %s · appetite %s)" % (prof.name, fee_model.name, prof.appetite))
+    if prof.advantages:
+        print("  your edge: " + ", ".join("%s +%.0f%%" % (k, v * 100) for k, v in prof.advantages.items()))
+
+    print("\n  LANDSCAPE (ranked by base ROI + your advantage):")
+    print("  category    n  crowding   demand   ROI   your-edge   read")
+    for r in scout.landscape(rows, prof, fee_model):
+        read = "leaders dominate" if r["competition"] >= 0.75 else ("OPEN LANE" if r["competition"] <= 0.40 else "contested")
+        print("  %-10s %2d   %4.0f%%   %6.0f/mo  %3.0f%%   %s   %s"
+              % (r["category"], r["n"], r["competition"] * 100, r["demand"], r["roi"] * 100,
+                 ("+%.0f%%" % (r["fit"] * 100)) if r["fit"] else "  – ", read))
+
+    print("\n  OPPORTUNITIES to pursue (personalised gate):")
+    tickets = scout.build(rows, prof, fee_model).cycle(place=True)
+    print("  → %d worth pursuing for this profile." % len(tickets))
+
+
 def _parse_sales(text):
     """'drink=500,hookah=120,takeout=85' -> {'drink':500, ...}."""
     out = {}
@@ -153,19 +180,19 @@ def _parse_sales(text):
 
 
 def _venue(args):
-    """EBE Venue OS — POS counts -> supplies consumed -> reorder."""
+    """Venue supply tracking — POS counts -> supplies consumed -> reorder."""
     from .venue import engine
     from .venue.sample import sample_menu, sample_consumables, sample_sales
     menu, consumables = sample_menu(), sample_consumables()
     sales = _parse_sales(args.sales) if args.sales else sample_sales()
-    print("\n══ EBE VENUE OS ══")
+    print("\n══ EBE COMMAND · VENUE SUPPLY ══")
     engine.run(sales, menu, consumables, period_days=args.period, place=True)
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="ebe", description="EBE Commerce — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue"),
-                    help="which branch to run (or 'check' / 'discover' / 'venue')")
+    ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout"),
+                    help="which branch to run (or 'check' / 'discover' / 'venue' / 'scout')")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -186,9 +213,11 @@ def main(argv=None):
     ap.add_argument("--max-sellers", type=int, default=None, dest="max_sellers", help="discover: max competing sellers")
     ap.add_argument("--limit", type=int, default=30, help="discover: how many candidates to pull (default 30)")
     ap.add_argument("--cost-ratio", type=float, default=0.35, dest="cost_ratio", help="discover: assumed landed cost as a fraction of sell price (default 0.35)")
-    # venue (EBE Venue OS)
+    # venue supply tracking
     ap.add_argument("--sales", help="venue: POS counts, e.g. 'drink=500,hookah=120,takeout=85' (default: sample)")
     ap.add_argument("--period", type=int, default=30, help="venue: days the sales counts cover (default 30)")
+    # scout
+    ap.add_argument("--profile", help="scout: operator profile (hookah, generic, cautious, aggressive)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -199,6 +228,8 @@ def main(argv=None):
         return _check()
     if args.branch == "venue":
         return _venue(args)
+    if args.branch == "scout":
+        return _scout(args)
     if args.branch == "discover":
         from .adapters.base import AdapterError
         try:

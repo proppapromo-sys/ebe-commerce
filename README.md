@@ -1,10 +1,10 @@
-# EBE Commerce
+# EBE Command
 
-A **risk-first seller engine** for marketplaces — built to maximise *profit after every
-fee*, not vanity revenue. One **Universal Genome** (a reusable decision skeleton), many
-**branches** you snap on. Today it's a seller/operator brain for Amazon-style selling and
-your own merch/apparel; the architecture is laid out to grow toward a full storefront +
-auto-pilot platform later.
+A **risk-first operator brain** — built to maximise *profit after every fee*, not vanity
+revenue, and to read a market through *your* lens. One **Universal Genome** (a reusable
+decision skeleton), many **branches** you snap on. It scouts opportunities, sources, prices,
+restocks, runs ads, plugs return leaks, tracks your own venue's supplies — all personalised to
+the operator. The architecture grows toward a full operator + supply platform.
 
 > Philosophy: **survive first, edge second.** No edge → no action. Prove it with a small
 > test before you scale. Every number is taken *after* the marketplace's vig.
@@ -204,19 +204,34 @@ Machine(my_feed, MyEdge(), MyRisk(bankroll=2000), BlindEyes(), MyHands()).cycle(
 
 ---
 
-## EBE Venue OS — the same genome, pointed at your own venue
+## Scout the landscape — personalised to you
 
-The strongest use of this engine isn't reselling on Amazon — it's running a hospitality
-**supply ecosystem**. Venue OS takes your POS counts (drinks / hookahs / takeout), explodes
-each sale's bill-of-materials into the supplies it consumed, and runs the **same restock brain**
-the Amazon inventory branch uses to say *"you'll run out of charcoal in 19 days — reorder?"*
+The engine isn't one strategy; it's a lens on the whole market, tuned to *you*. A **Profile**
+captures your capital, risk appetite, focus categories, and real-world advantages; **`scout`**
+then surveys a market through that lens — ranking opportunities and reading each lane (open vs
+leaders-dominate) so two operators get *different* shortlists from identical data.
+
+```bash
+python -m ebe scout --profile hookah        # hookah/bar/takeout advantages weight the results
+python -m ebe scout --profile generic
+```
+
+Profiles live in `ebe/profile.py` (`hookah`, `generic`, `cautious`, `aggressive`) — clone and
+tune one to a real operator. Feed it `discover` output to scout a live market.
+
+## Venue supply tracking — the same genome, pointed at your own venue
+
+Another lane: run the engine on your *own* consumption. It takes your POS counts (drinks /
+hookahs / takeout), explodes each sale's bill-of-materials into the supplies it consumed, and
+runs the **same restock brain** the Amazon inventory branch uses to say *"you'll run out of
+charcoal in 19 days — reorder?"*
 
 ```bash
 python -m ebe venue
 python -m ebe venue --sales "drink=500,hookah=120,takeout=85" --period 30
 ```
 ```
-EBE VENUE OS — consumption from: 500 drinks · 120 hookahs · 85 takeout
+consumption from: 500 drinks · 120 hookahs · 85 takeout
   Coconut charcoal cube     480 used/mo · 19d cover · $29/mo
   3-compartment container    85 used/mo · 14d cover · $20/mo
   ...
@@ -245,7 +260,9 @@ ebe/
     inventory.py       # branch 3 — restock / reorder-point (per variant)
     adspend.py         # branch 4 — ad-budget allocation by ACOS/ROAS
     returns.py         # branch 6 — stop the return leak (excess returns vs category norm)
-  venue/               # EBE Venue OS — POS counts -> BOM -> supplies consumed -> reorder
+  venue/               # venue supply tracking — POS counts -> BOM -> supplies consumed -> reorder
+  profile.py           # operator profiles — personalise every branch to who you are
+  branches/scout.py    # read a market through your profile (landscape + ranked opportunities)
   journal.py           # the record: decisions + outcomes (learning loop)
   cli.py / __main__.py # python -m ebe <branch>
 tests/                 # unittest suite (python -m unittest discover -s tests)
@@ -261,8 +278,9 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] `discover` — Keepa Product Finder hands you ranked candidate products to evaluate
 - [x] AI Brain — Claude (`claude-opus-4-8`) estimates demand + confidence, caged by the Heart
 - [x] Genome v2 — closed learning loop (journal + LearningEyes), sanity gate, portfolio cap, retry/budget guards
-- [x] **EBE Venue OS Phase 1** — POS counts → bill-of-materials → supplies consumed → auto-reorder
-- [ ] Venue OS Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
+- [x] Profiles + `scout` — personalised market landscape + ranked opportunities per operator
+- [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
+- [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-sample.py — a sample venue (restaurant + bar + hookah lounge) so Venue OS runs out of
-the box. Swap these for YOUR menu's recipes, YOUR supplies, and YOUR POS counts.
+sample.py — a sample venue (restaurant + bar + hookah lounge) so it runs out of the box.
+Swap these for YOUR menu's recipes, YOUR supplies, and YOUR POS counts.
 """
 from __future__ import annotations
 

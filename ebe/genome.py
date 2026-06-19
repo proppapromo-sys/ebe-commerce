@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-genome.py — THE UNIVERSAL GENOME for EBE Commerce.
+genome.py — THE UNIVERSAL GENOME for EBE Command.
 
 The reusable skeleton behind every "branch" of the seller engine (sourcing,
 pricing, restock, ad-spend, ...). Implement the seven organs for YOUR decision;

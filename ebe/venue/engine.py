@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-engine.py — EBE Venue OS Phase 1: POS counts in → supplies consumed → "reorder?" out.
+engine.py — venue supply tracking (Phase 1): POS counts in → supplies consumed → "reorder?" out.
 
 It REUSES the genome's restock organs (the same reorder-point brain the Amazon inventory
 branch runs) — proof that one Universal Genome runs the venue, not just the marketplace.
@@ -59,7 +59,7 @@ def run(sales, menu, consumables, period_days=30, place=True):
     items = to_restock_items(usage, consumables, period_days)
 
     sold = " · ".join("%d %s" % (n, menu[m].name if m in menu else m) for m, n in sales.items())
-    print("EBE VENUE OS — consumption from: %s  (over %d days)\n" % (sold, period_days))
+    print("consumption from: %s  (over %d days)\n" % (sold, period_days))
 
     monthly_spend = 0.0
     for it in sorted(items, key=lambda x: -x["monthly_sales"] * x["cost"]):
