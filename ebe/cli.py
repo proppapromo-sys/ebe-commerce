@@ -140,6 +140,36 @@ def _discover(args, fee_model):
     print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
 
 
+def _edges(args):
+    """Score a market across ALL edge angles and rank by true (defensible) edge."""
+    from .profile import PROFILES
+    from .branches import scout
+    from . import edges as edgemod
+    prof = PROFILES.get(args.profile or "generic")
+    if prof is None:
+        raise SystemExit("unknown profile '%s' (choices: %s)" % (args.profile, ", ".join(sorted(PROFILES))))
+    fee_model = PRESETS[args.fees]
+    rows = scout.sample_market()
+
+    print("\n══ EBE COMMAND · TRUE EDGE ══ (profile: %s · %s)" % (prof.name, fee_model.name))
+    w = edgemod.weights_for(prof)
+    print("  angle weights: " + " ".join("%s %.0f%%" % (k, v * 100) for k, v in w.items()))
+    print("\n  product                       mrg dmd cmp adv rec tim arb | EDGE moat  verdict")
+    ranked = edgemod.rank(rows, prof, fee_model)
+    for e in ranked:
+        s = e.signals
+        bars = " ".join("%3.0f" % (s[k] * 100) for k in
+                        ("margin", "demand", "competition", "advantage", "recurrence", "timing", "arbitrage"))
+        print("  %-28s %s | %3.0f%% %3.0f%%  %s"
+              % (e.item["name"][:28], bars, e.composite * 100, e.moat * 100, e.verdict))
+    corner = [e for e in ranked if e.verdict == "CORNER"]
+    print("\n  %d opportunit%s you can CORNER (defensible + profitable):"
+          % (len(corner), "y" if len(corner) == 1 else "ies"))
+    for e in corner:
+        print("    🏰 %-26s edge %.0f%% · moat %.0f%%" % (e.item["name"][:26], e.composite * 100, e.moat * 100))
+    print("\n  angles: mrg=margin dmd=demand cmp=open-lane adv=your-advantage rec=recurring tim=trend arb=arbitrage")
+
+
 def _scout(args):
     """Survey a market through a Profile — landscape map + ranked, personalised opportunities."""
     from .profile import PROFILES
@@ -191,8 +221,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout"),
-                    help="which branch to run (or 'check' / 'discover' / 'venue' / 'scout')")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout", "edges"),
+                    help="which branch to run (or 'check' / 'discover' / 'venue' / 'scout' / 'edges')")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -230,6 +260,8 @@ def main(argv=None):
         return _venue(args)
     if args.branch == "scout":
         return _scout(args)
+    if args.branch == "edges":
+        return _edges(args)
     if args.branch == "discover":
         from .adapters.base import AdapterError
         try:

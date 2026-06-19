@@ -219,6 +219,24 @@ python -m ebe scout --profile generic
 Profiles live in `ebe/profile.py` (`hookah`, `generic`, `cautious`, `aggressive`) — clone and
 tune one to a real operator. Feed it `discover` output to scout a live market.
 
+### True edge — every angle, fused
+
+Profit is one angle; a *defensible* position stacks many. `edges` scores **seven independent
+edge angles** — margin, demand, open-lane, your advantage, recurrence (re-buy moat), timing,
+arbitrage — fuses them (weighted by your goals), and flags what you can actually **corner**
+(defensible *and* profitable), not just what's momentarily profitable.
+
+```bash
+python -m ebe edges --profile hookah
+```
+```
+  product                       mrg dmd cmp adv rec tim arb | EDGE moat  verdict
+  Disposable hookah mouth tips 100  60  70 100 100  50  50 |  84%  90%  CORNER
+  Vegetable chopper            100 100  10   0  30  50  50 |  56%  13%  TEST   ← high profit, no moat
+```
+
+High margin with a thin moat is a treadmill; the engine steers you to the lanes you can own.
+
 ## Venue supply tracking — the same genome, pointed at your own venue
 
 Another lane: run the engine on your *own* consumption. It takes your POS counts (drinks /
@@ -262,6 +280,7 @@ ebe/
     returns.py         # branch 6 — stop the return leak (excess returns vs category norm)
   venue/               # venue supply tracking — POS counts -> BOM -> supplies consumed -> reorder
   profile.py           # operator profiles — personalise every branch to who you are
+  edges.py             # true edge — fuse 7 edge angles, flag what's CORNERABLE
   branches/scout.py    # read a market through your profile (landscape + ranked opportunities)
   journal.py           # the record: decisions + outcomes (learning loop)
   cli.py / __main__.py # python -m ebe <branch>
@@ -279,6 +298,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] AI Brain — Claude (`claude-opus-4-8`) estimates demand + confidence, caged by the Heart
 - [x] Genome v2 — closed learning loop (journal + LearningEyes), sanity gate, portfolio cap, retry/budget guards
 - [x] Profiles + `scout` — personalised market landscape + ranked opportunities per operator
+- [x] `edges` — fuse 7 edge angles into a true-edge score; flag defensible, cornerable lanes
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
