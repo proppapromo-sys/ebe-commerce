@@ -435,8 +435,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
-                    help="a branch, or: command (today) / forecast (cash ahead) / check / discover / venue / scout / edges / arbitrage / outcome")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
+                    help="a branch, or: command / forecast / dashboard (web UI) / check / discover / venue / scout / edges / arbitrage / outcome")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -466,6 +466,8 @@ def main(argv=None):
     ap.add_argument("--capital", type=float, default=None, help="forecast/command: your available cash, for a runway/solvency check")
     # scout / edges
     ap.add_argument("--profile", help="scout/edges: operator profile (hookah, generic, cautious, aggressive)")
+    # dashboard
+    ap.add_argument("--port", type=int, default=None, help="dashboard: port (default 8765)")
     # arbitrage
     ap.add_argument("--asins", help="arbitrage/edges: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
     ap.add_argument("--alt", metavar="CSV", help="arbitrage: cross-channel prices CSV (channel,identifier,price)")
@@ -489,6 +491,9 @@ def main(argv=None):
         return _command(args)
     if args.branch == "forecast":
         return _forecast(args)
+    if args.branch == "dashboard":
+        from . import dashboard
+        return dashboard.serve(args)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":

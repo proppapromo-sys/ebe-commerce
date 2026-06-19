@@ -14,8 +14,12 @@ the operator. The architecture grows toward a full operator + supply platform.
 ## The daily driver
 
 ```bash
-python -m ebe command         # ONE consolidated action list across every branch
+python -m ebe dashboard       # open http://127.0.0.1:8765 — today + forecast + edge in a browser
+python -m ebe command         # ONE consolidated action list across every branch (terminal)
 ```
+
+`dashboard` is a pure-stdlib web UI (zero dependencies): today's actions, the cash forecast,
+and the true-edge table on one auto-refreshing page.
 ```
 ══ EBE COMMAND · TODAY ══
 🩹 STOP THE LEAK   🚚 REORDER   🏷️ REPRICE   📈 SCALE ADS   📦 SOURCE
@@ -398,6 +402,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
 - [x] `forecast` — forward cash-flow (store + venue) with a capital runway/solvency check
 - [x] Cost-merge — overlay a real `sku,cost` sheet (and SP-API stock) onto any run via `--costs`
+- [x] `dashboard` — pure-stdlib web UI: today + forecast + true-edge in a browser (zero deps)
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
