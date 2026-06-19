@@ -60,6 +60,15 @@ def plan(store: Store, safety_days=10, target_cover_days=45) -> list:
     return proposals
 
 
+def raise_for(store: Store, sku, safety_days=10, target_cover_days=45, status="draft"):
+    """Raise a single PO for one SKU from its current proposal. Returns the PO id or None."""
+    for prop in plan(store, safety_days, target_cover_days):
+        if prop["sku"] == sku:
+            return store.create_po(prop["sku"], prop["qty"], prop["unit_cost"],
+                                   reason=prop["reason"], supplier=prop["supplier"], status=status)
+    return None
+
+
 def scan(store: Store, safety_days=10, target_cover_days=45, auto=False, budget=None) -> list:
     """Raise purchase orders for everything under the line. Returns the POs created.
 

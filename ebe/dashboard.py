@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-dashboard.py — EBE Command, a working web interface. Pure stdlib (http.server), zero deps.
+dashboard.py — EBE Command, a working web interface with a JARVIS-style HUD.
+Pure stdlib (http.server), zero deps; all motion is CSS + a few lines of vanilla JS.
 
   python -m ebe dashboard            # then open http://127.0.0.1:8765
 
 Pages (top nav):
   • Today      — the daily action list, cash forecast, scout landscape, true edge
+  • Re-buy     — proposed purchase orders from the live database; approve/receive in-browser
   • Live Edge  — type ASINs → live Keepa true-edge + buy-the-dip arbitrage
   • Supply·AI  — paste supplier listings → AI Ears normalize → cornerable shortlist
   • Venue      — enter POS counts → supplies consumed → reorder + cash
@@ -22,28 +24,167 @@ import types
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-NAV = [("/", "Today", "today"), ("/live", "Live Edge", "live"),
-       ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
+NAV = [("/", "Today", "today"), ("/rebuy", "Re-buy", "rebuy"),
+       ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"),
+       ("/venue", "Venue", "venue")]
 
 _CSS = """
-:root{color-scheme:dark}
-body{background:#0f1115;color:#e6e6e6;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;margin:0;padding:20px;max-width:1100px}
-h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#9ad;margin:22px 0 8px;border-bottom:1px solid #243}
-.sub{color:#89a;margin-bottom:8px}
-.nav{margin:8px 0 12px}.nav a{display:inline-block;padding:5px 12px;margin-right:6px;border:1px solid #243;border-radius:8px;color:#bcd;text-decoration:none}
-.nav a.navon{background:#1b2740;color:#fff;border-color:#356}
-a{color:#9cf}
-table{border-collapse:collapse;width:100%;margin:4px 0 8px}
-td,th{padding:3px 10px;text-align:left;border-bottom:1px solid #1c2230}
-th{color:#7fa;font-weight:600}.r{text-align:right}
-.pill{padding:1px 7px;border-radius:8px;font-size:12px}
-.CORNER{background:#163;color:#bfb}.STRONG{background:#136;color:#bdf}.TEST{background:#332;color:#dda}.pass{color:#667}
-.warn{color:#f88}.ok{color:#8d8}.big{font-size:16px}
-.card{background:#151823;border:1px solid #222a3a;border-radius:10px;padding:12px 16px;margin-bottom:10px}
-input,textarea{background:#0c0e14;color:#e6e6e6;border:1px solid #2a3346;border-radius:7px;padding:6px 9px;font:inherit}
-button{background:#1b2740;color:#fff;border:1px solid #356;border-radius:7px;padding:6px 14px;cursor:pointer;font:inherit}
+:root{
+  color-scheme:dark;
+  --bg:#060a12; --bg2:#0a1322;
+  --panel:rgba(17,28,46,.55); --brd:rgba(86,180,255,.18);
+  --cyan:#39e6ff; --cyandim:#88d6ec; --green:#38ffb0; --amber:#ffc24b; --red:#ff7a7a;
+  --ink:#d6e8ff; --mut:#7e93b0;
+  --hud:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,sans-serif;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;min-height:100vh;color:var(--ink);font:14px/1.55 var(--sans);overflow-x:hidden;
+  padding:0 0 70px;
+  background:
+    radial-gradient(1200px 720px at 82% -12%, rgba(33,96,176,.28), transparent 60%),
+    radial-gradient(900px 620px at -12% 112%, rgba(18,128,150,.18), transparent 55%),
+    linear-gradient(180deg,var(--bg),var(--bg2));
+  background-attachment:fixed;}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(70,150,210,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(70,150,210,.05) 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-mask:radial-gradient(circle at 50% 26%,#000,transparent 92%);
+          mask:radial-gradient(circle at 50% 26%,#000,transparent 92%);
+  animation:gridpan 26s linear infinite;}
+@keyframes gridpan{to{background-position:44px 44px}}
+.sweep{position:fixed;top:0;left:0;right:0;height:2px;z-index:40;opacity:.9;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  animation:sweep 2.2s cubic-bezier(.4,0,.2,1) both;}
+@keyframes sweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+.topbar{position:sticky;top:0;z-index:6;display:flex;justify-content:space-between;align-items:center;
+  gap:16px;flex-wrap:wrap;padding:13px 26px;
+  background:linear-gradient(180deg,rgba(7,12,22,.94),rgba(7,12,22,.55));
+  -webkit-backdrop-filter:blur(13px);backdrop-filter:blur(13px);border-bottom:1px solid var(--brd);}
+.brand{display:flex;align-items:center;gap:13px;font:700 18px/1 var(--hud);letter-spacing:.16em;
+  color:#eaf8ff;text-shadow:0 0 20px rgba(57,230,255,.4)}
+.brand .core{width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 32% 30%,#cffbff,#39e6ff 46%,#0c7d9e);
+  box-shadow:0 0 12px var(--cyan),0 0 30px rgba(57,230,255,.7);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.18);opacity:1}}
+.status{display:flex;align-items:center;gap:9px;font:600 11px/1 var(--hud);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mut)}
+.status .sep{opacity:.4}
+.status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 10px var(--green);animation:pulse 2s infinite}
+#clock{color:var(--cyandim)}
+
+.nav{display:flex;flex-wrap:wrap;gap:8px;max-width:1160px;margin:16px auto 4px;padding:0 26px;position:relative;z-index:3}
+.nav a{font:600 12px/1 var(--hud);letter-spacing:.09em;text-transform:uppercase;text-decoration:none;
+  color:var(--cyandim);padding:10px 17px;border:1px solid var(--brd);border-radius:11px;
+  background:rgba(20,32,52,.4);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  transition:.28s cubic-bezier(.2,.8,.2,1)}
+.nav a:hover{color:#eaffff;border-color:var(--cyan);transform:translateY(-2px);
+  box-shadow:0 0 0 1px rgba(57,230,255,.3),0 10px 26px -10px rgba(57,230,255,.6)}
+.nav a.navon{color:#00121a;background:linear-gradient(180deg,#86f0ff,#39e6ff);border-color:#86f0ff;
+  box-shadow:0 0 24px -4px var(--cyan)}
+
+.wrap{max-width:1160px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+.switchline{margin:6px auto 10px;color:var(--mut);font-size:12px;letter-spacing:.04em}
+.switchline a{color:var(--cyandim);text-decoration:none}.switchline a:hover{color:var(--cyan)}
+
+h2{font:600 13px/1.2 var(--hud);letter-spacing:.15em;text-transform:uppercase;color:#c4ecff;
+  margin:28px 0 13px;display:flex;align-items:center;gap:11px;animation:rise .5s both}
+h2::before{content:"";width:3px;height:15px;border-radius:2px;
+  background:linear-gradient(var(--cyan),transparent);box-shadow:0 0 10px var(--cyan)}
+
+.card{position:relative;background:var(--panel);border:1px solid var(--brd);border-radius:15px;
+  padding:15px 19px;margin:0 0 14px;-webkit-backdrop-filter:blur(11px);backdrop-filter:blur(11px);
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 22px 44px -30px rgba(0,0,0,.95);
+  transition:.3s cubic-bezier(.2,.8,.2,1);animation:rise .5s both}
+.card::before,.card::after{content:"";position:absolute;width:15px;height:15px;
+  border:1px solid var(--cyan);opacity:.45;transition:.3s}
+.card::before{top:-1px;left:-1px;border-right:0;border-bottom:0;border-radius:15px 0 0 0}
+.card::after{bottom:-1px;right:-1px;border-left:0;border-top:0;border-radius:0 0 15px 0}
+.card:hover{border-color:rgba(57,230,255,.4);transform:translateY(-2px);
+  box-shadow:0 0 0 1px rgba(57,230,255,.15),0 28px 56px -32px rgba(57,230,255,.55)}
+.card:hover::before,.card:hover::after{opacity:.9;width:20px;height:20px}
+@keyframes rise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
+.wrap>*:nth-child(1){animation-delay:.02s}.wrap>*:nth-child(2){animation-delay:.06s}
+.wrap>*:nth-child(3){animation-delay:.10s}.wrap>*:nth-child(4){animation-delay:.14s}
+.wrap>*:nth-child(5){animation-delay:.18s}.wrap>*:nth-child(6){animation-delay:.22s}
+.wrap>*:nth-child(7){animation-delay:.26s}.wrap>*:nth-child(8){animation-delay:.30s}
+.wrap>*:nth-child(9){animation-delay:.34s}.wrap>*:nth-child(n+10){animation-delay:.38s}
+
+table{border-collapse:separate;border-spacing:0;width:100%;margin:6px 0 12px;font:13px/1.5 var(--hud);
+  background:rgba(9,16,30,.42);border:1px solid var(--brd);border-radius:13px;overflow:hidden;animation:rise .5s both}
+th{font:600 11px/1 var(--hud);letter-spacing:.1em;text-transform:uppercase;color:var(--cyandim);
+  text-align:left;padding:11px 13px;background:rgba(21,35,58,.6);border-bottom:1px solid var(--brd)}
+td{padding:10px 13px;border-bottom:1px solid rgba(70,100,140,.12)}
+tr:last-child td{border-bottom:0}
+tbody tr,table tr{transition:.18s}
+tr:hover td{background:rgba(57,230,255,.06)}
+.r{text-align:right;font-variant-numeric:tabular-nums}
+
+.pill{display:inline-block;padding:3px 11px;border-radius:20px;font:600 11px/1 var(--hud);letter-spacing:.06em}
+.CORNER{background:rgba(56,255,176,.14);color:#7dffce;box-shadow:0 0 0 1px rgba(56,255,176,.35),0 0 15px -2px rgba(56,255,176,.5)}
+.STRONG{background:rgba(59,160,255,.14);color:#9cd4ff;box-shadow:0 0 0 1px rgba(59,160,255,.35)}
+.TEST{background:rgba(255,194,75,.14);color:#ffd98a;box-shadow:0 0 0 1px rgba(255,194,75,.3)}
+.pass{color:var(--mut)}
+.warn{color:var(--amber)}.ok{color:var(--green)}
+.big{font:700 22px/1 var(--hud);color:#eaffff;text-shadow:0 0 18px rgba(57,230,255,.4)}
+.sub{color:var(--mut);font-size:12px;letter-spacing:.03em}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin:8px 0 16px}
+.metric{position:relative;background:var(--panel);border:1px solid var(--brd);border-radius:15px;
+  padding:15px 17px;-webkit-backdrop-filter:blur(11px);backdrop-filter:blur(11px);animation:rise .5s both;overflow:hidden}
+.metric::after{content:"";position:absolute;inset:0;background:linear-gradient(120deg,transparent 40%,rgba(57,230,255,.07),transparent 60%);
+  transform:translateX(-100%);animation:shine 5s ease-in-out infinite}
+@keyframes shine{0%,60%{transform:translateX(-100%)}80%,100%{transform:translateX(100%)}}
+.metric .k{font:600 10px/1 var(--hud);letter-spacing:.15em;text-transform:uppercase;color:var(--mut)}
+.metric .v{font:700 27px/1.1 var(--hud);color:#eaffff;margin-top:9px;text-shadow:0 0 16px rgba(57,230,255,.35)}
+.metric.alert .v{color:#ffd98a;text-shadow:0 0 16px rgba(255,194,75,.4)}
+.metric.go .v{color:#7dffce;text-shadow:0 0 16px rgba(56,255,176,.4)}
+
+input,textarea,select{background:rgba(7,13,24,.7);color:var(--ink);border:1px solid var(--brd);
+  border-radius:10px;padding:9px 12px;font:13px var(--hud);transition:.2s}
+input:focus,textarea:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(57,230,255,.15)}
 textarea{width:100%;min-height:120px}
+button,.btn{position:relative;overflow:hidden;cursor:pointer;text-decoration:none;display:inline-block;
+  font:600 12px/1 var(--hud);letter-spacing:.06em;text-transform:uppercase;color:#00121a;
+  background:linear-gradient(180deg,#86f0ff,#39e6ff);border:0;border-radius:10px;padding:10px 16px;
+  box-shadow:0 8px 22px -8px var(--cyan);transition:.2s cubic-bezier(.2,.8,.2,1)}
+button:hover,.btn:hover{transform:translateY(-2px);box-shadow:0 13px 30px -8px var(--cyan)}
+button:active,.btn:active{transform:translateY(0)}
+.btn.ghost{color:var(--cyandim);background:transparent;border:1px solid var(--brd);box-shadow:none}
+.btn.ghost:hover{color:#eaffff;border-color:var(--cyan);box-shadow:0 0 0 1px rgba(57,230,255,.3)}
+.btn.go{background:linear-gradient(180deg,#7dffce,#38ffb0)}
+.btn.warn{background:linear-gradient(180deg,#ffd98a,#ffc24b)}
+.btn.sm{padding:6px 11px;font-size:11px;border-radius:8px}
+.rip{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55);
+  transform:translate(-50%,-50%);animation:rip .6s ease-out forwards;pointer-events:none}
+@keyframes rip{to{width:260px;height:260px;opacity:0}}
+.banner{border-radius:12px;padding:11px 15px;margin:0 0 14px;font-size:13px;
+  background:rgba(255,194,75,.08);border:1px solid rgba(255,194,75,.3);color:#ffd98a;animation:rise .5s both}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
+
+_JS = """<script>
+(function(){
+function p(n){return(n<10?'0':'')+n;}
+function tick(){var c=document.getElementById('clock');if(!c)return;var d=new Date();
+c.textContent=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+tick();setInterval(tick,1000);
+document.querySelectorAll('[data-count]').forEach(function(el){
+var to=parseFloat(el.getAttribute('data-count'))||0,pre=el.getAttribute('data-pre')||'',
+suf=el.getAttribute('data-suf')||'',s=null,dur=900;
+function f(t){if(!s)s=t;var q=Math.min(1,(t-s)/dur),e=1-Math.pow(1-q,3);
+el.textContent=pre+Math.round(to*e).toLocaleString()+suf;if(q<1)requestAnimationFrame(f);}
+requestAnimationFrame(f);});
+document.addEventListener('click',function(ev){var b=ev.target.closest('button,.btn');if(!b)return;
+var r=document.createElement('span');r.className='rip';var q=b.getBoundingClientRect();
+r.style.left=(ev.clientX-q.left)+'px';r.style.top=(ev.clientY-q.top)+'px';b.appendChild(r);
+setTimeout(function(){if(r.parentNode)r.parentNode.removeChild(r);},600);});
+})();
+</script>"""
 
 
 def _esc(x):
@@ -63,22 +204,28 @@ def _parse_sales(text):
     return out
 
 
-# ── shared shell (nav + profile switcher) ────────────────────────────────────
+# ── shared HUD shell (top bar + nav + profile switcher) ──────────────────────
 def _shell(ctx, current, inner, refresh=False):
     cap = "" if ctx["capital"] is None else "&capital=%g" % ctx["capital"]
-    nav = " ".join("<a class='%s' href='%s?profile=%s%s'>%s</a>"
-                   % ("navon" if k == current else "", path, _esc(ctx["pkey"]), cap, _esc(label))
-                   for path, label, k in NAV)
+    nav = "".join("<a class='%s' href='%s?profile=%s%s'>%s</a>"
+                  % ("navon" if k == current else "", path, _esc(ctx["pkey"]), cap, _esc(label))
+                  for path, label, k in NAV)
     cur_path = next((p for p, _, k in NAV if k == current), "/")
-    profs = " · ".join("<a href='%s?profile=%s%s'>%s</a>" % (cur_path, _esc(p), cap, _esc(p)) for p in ctx["profiles"])
-    head = ["<!doctype html><meta charset=utf-8><title>EBE Command</title>",
+    profs = " · ".join("<a href='%s?profile=%s%s'>%s</a>" % (cur_path, _esc(p), cap, _esc(p))
+                       for p in ctx["profiles"])
+    head = ["<!doctype html><html lang=en><head><meta charset=utf-8><title>EBE Command</title>",
             "<meta name=viewport content='width=device-width,initial-scale=1'>"]
     if refresh:
-        head.append("<meta http-equiv=refresh content=30>")
-    head += ["<style>%s</style>" % _CSS, "<h1>EBE&nbsp;COMMAND</h1>",
-             "<div class=nav>%s</div>" % nav,
-             "<div class=sub>profile: %s · fees: %s · switch → %s</div>" % (_esc(ctx["pname"]), _esc(ctx["fee"]), profs)]
-    return "".join(head) + inner
+        head.append("<meta http-equiv=refresh content=45>")
+    head.append("<style>%s</style></head><body><div class=sweep></div>" % _CSS)
+    head.append(
+        "<header class=topbar><div class=brand><span class=core></span>EBE&nbsp;COMMAND</div>"
+        "<div class=status><span class=dot></span>ONLINE<span class=sep>·</span>"
+        "<span id=clock>--:--:--</span><span class=sep>·</span>%s<span class=sep>·</span>%s</div></header>"
+        % (_esc(ctx["pname"]), _esc(ctx["fee"])))
+    head.append("<nav class=nav>%s</nav>" % nav)
+    head.append("<div class='wrap switchline'>switch profile → %s</div>" % profs)
+    return "".join(head) + "<main class=wrap>" + inner + "</main>" + _JS + "</body></html>"
 
 
 def _ctx_from_args(args):
@@ -226,6 +373,113 @@ def render(d):
     return _shell(ctx, "today", _today_inner(d), refresh=True)
 
 
+# ── RE-BUY page (live database + autobuy) ────────────────────────────────────
+def _store_for(args):
+    """The real database if it has a catalog; else an in-memory sample so the tab demos."""
+    from .store import Store, DEFAULT_DB
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    if store.products():
+        return store, True, db
+    import os
+    from .catalog.csv_io import load_store_rows
+    demo = Store(":memory:")
+    sample = os.path.join(os.path.dirname(__file__), "..", "examples", "products.csv")
+    if os.path.exists(sample):
+        demo.upsert_products(load_store_rows(sample))
+    return demo, False, db
+
+
+def render_rebuy(args):
+    from . import autobuy
+    store, live, db = _store_for(args)
+    prof = args.profile or "generic"
+    proposals = autobuy.plan(store)
+    drafts = store.purchase_orders("draft")
+    ordered = store.purchase_orders("ordered")
+    received = store.purchase_orders("received")[:6]
+    pcash = sum(p["cash"] for p in proposals)
+    open_cash = sum(po["cash"] for po in drafts + ordered)
+
+    inner = ["<h2>🔁 Auto re-buy</h2>"]
+    if not live:
+        inner.append("<div class=banner>Showing the <b>sample</b> catalog — approvals are disabled. "
+                     "Load your own with <b>python -m ebe catalog --products data\\products.csv</b>, "
+                     "then this tab goes live on your real stock.</div>")
+    inner.append(
+        "<div class=metrics>"
+        "<div class='metric alert'><div class=k>Under reorder line</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric'><div class=k>Cash to commit</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric'><div class=k>Open POs</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric go'><div class=k>In transit</div><div class=v data-count='%d'>0</div></div>"
+        "</div>" % (len(proposals), round(pcash), len(drafts) + len(ordered), len(ordered)))
+
+    p = urllib.parse.quote(prof)
+    if proposals:
+        raiseall = ("<a class='btn go sm' href='/po?raiseall=1&profile=%s'>⚡ Raise all drafts</a>" % p) if live else ""
+        inner.append("<h2>📉 Proposed re-buys %s</h2>" % raiseall)
+        inner.append("<table><tr><th>product<th class=r>on hand<th class=r>cover<th class=r>order<th class=r>cash<th>why%s</tr>"
+                     % ("<th>act" if live else ""))
+        for pr in proposals:
+            act = ("<td><a class='btn sm' href='/po?raise=%s&profile=%s'>Approve</a>"
+                   % (urllib.parse.quote(pr["sku"]), p)) if live else ""
+            inner.append("<tr><td>%s<td class=r>%d<td class=r>%.0fd<td class=r>%d<td class=r>$%.0f<td class=sub>%s%s</tr>"
+                         % (_esc(pr["name"]), pr["on_hand"], pr["cover_days"], pr["qty"], pr["cash"], _esc(pr["reason"]), act))
+        inner.append("</table>")
+    else:
+        inner.append("<div class=card><span class=ok>✓ Every SKU has cover</span> — nothing under the reorder line right now.</div>")
+
+    if drafts:
+        inner.append("<h2>📝 Draft POs — awaiting approval</h2>")
+        inner.append("<table><tr><th>PO<th>product<th class=r>units<th class=r>cash<th>why%s</tr>" % ("<th>act" if live else ""))
+        for po in drafts:
+            act = ("<td><a class='btn sm' href='/po?order=%d&profile=%s'>Mark ordered</a> "
+                   "<a class='btn ghost sm' href='/po?cancel=%d&profile=%s'>Cancel</a>" % (po["id"], p, po["id"], p)) if live else ""
+            inner.append("<tr><td>#%d<td>%s<td class=r>%d<td class=r>$%.0f<td class=sub>%s%s</tr>"
+                         % (po["id"], _esc(po["name"]), po["qty"], po["cash"], _esc(po["reason"] or ""), act))
+        inner.append("</table>")
+
+    if ordered:
+        inner.append("<h2>🚚 In transit — receive when it lands</h2>")
+        inner.append("<table><tr><th>PO<th>product<th class=r>units<th class=r>cash%s</tr>" % ("<th>act" if live else ""))
+        for po in ordered:
+            act = ("<td><a class='btn go sm' href='/po?receive=%d&profile=%s'>Receive</a>" % (po["id"], p)) if live else ""
+            inner.append("<tr><td>#%d<td>%s<td class=r>%d<td class=r>$%.0f%s</tr>"
+                         % (po["id"], _esc(po["name"]), po["qty"], po["cash"], act))
+        inner.append("</table>")
+
+    if received:
+        inner.append("<h2>📦 Recently received</h2><table><tr><th>PO<th>product<th class=r>units<th class=r>cash</tr>")
+        for po in received:
+            inner.append("<tr><td>#%d<td>%s<td class=r>+%d<td class=r>$%.0f</tr>"
+                         % (po["id"], _esc(po["name"]), po["qty"], po["cash"]))
+        inner.append("</table>")
+    return _shell(_ctx_from_args(args), "rebuy", "".join(inner), refresh=True)
+
+
+def _do_po(args, qs):
+    """Apply a re-buy action against the real database. Returns nothing (caller redirects)."""
+    from .store import Store, DEFAULT_DB
+    from . import autobuy
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    if not store.products():
+        return                                   # demo db: nothing to act on
+    try:
+        if qs.get("raiseall"):
+            autobuy.scan(store)
+        elif qs.get("raise"):
+            autobuy.raise_for(store, qs["raise"][0])
+        elif qs.get("order"):
+            store.mark_ordered(int(qs["order"][0]))
+        elif qs.get("receive"):
+            store.receive_po(int(qs["receive"][0]))
+        elif qs.get("cancel"):
+            store.cancel_po(int(qs["cancel"][0]))
+    except (ValueError, KeyError):
+        pass
+
+
 # ── LIVE EDGE page (Keepa) ───────────────────────────────────────────────────
 def render_live(args, asins):
     inner = ["<h2>🧭 Live edge &amp; arbitrage (Keepa)</h2>",
@@ -350,10 +604,16 @@ def serve(args):
                         sc = 1.0
                     Journal(jr).record_outcome("edges", qs["id"][0], sc, category=(qs.get("cat") or [None])[0])
                 self.send_response(303); self.send_header("Location", "/"); self.end_headers(); return
+            if path == "/po":
+                _do_po(args, qs)
+                prof = (qs.get("profile") or ["generic"])[0]
+                self.send_response(303); self.send_header("Location", "/rebuy?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
             a = _req_args(args, query)
             try:
                 if path in ("/", ""):
                     body = render(_data(a))
+                elif path == "/rebuy":
+                    body = render_rebuy(a)
                 elif path == "/live":
                     body = render_live(a, (qs.get("asins") or [""])[0])
                 elif path == "/supply":

@@ -32,9 +32,27 @@ class DashboardRenderTests(unittest.TestCase):
         self.assertTrue("SHORT" in page or "headroom" in page)
 
     def test_html_escapes_names(self):
-        # a malicious-looking product name must be escaped, not injected
+        # The trusted HUD has its own <script>, but DATA must never inject markup.
         page = dashboard.render(dashboard._data(_args()))
-        self.assertNotIn("<script", page.lower())
+        self.assertNotIn("<script>alert", page.lower())   # no injected script
+        self.assertNotIn("onerror=", page.lower())        # no injected handler
+        self.assertEqual(dashboard._esc("<script>x</script>"),
+                         "&lt;script&gt;x&lt;/script&gt;")  # escaper neutralizes markup
+
+    def test_rebuy_tab_renders_proposals(self):
+        import os
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.remove(path)                                    # empty db → demo on sample catalog
+        try:
+            page = dashboard.render_rebuy(_args(db=path))
+            self.assertIn("Auto re-buy", page)
+            self.assertIn("Proposed re-buys", page)        # sample has SKUs under the line
+            self.assertIn("sample", page)                  # banner: not live yet
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_landscape_nav_and_switcher_panels(self):
         page = dashboard.render(dashboard._data(_args()))
