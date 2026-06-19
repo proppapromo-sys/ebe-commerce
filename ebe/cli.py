@@ -301,6 +301,26 @@ def _outcome(args):
           % (args.id, score, args.journal))
 
 
+def _forecast(args):
+    """Forward cash-flow: when each reorder fires and how much cash you'll need."""
+    from . import forecast
+    prods = load_products(args.products) if args.products else sample_live_catalog()
+    rows = forecast.cash_calendar(prods)
+    win = forecast.windows(rows)
+
+    print("\n══ EBE COMMAND · CASH FORECAST ══")
+    print("  cash needed →  next 7d: $%-7.0f  30d: $%-7.0f  60d: $%-7.0f  90d: $%-7.0f"
+          % (win[7], win[30], win[60], win[90]))
+    if not rows:
+        print("\n  (nothing projected to reorder — everything well-stocked)")
+        return
+    print("\n  when        SKU                          reorder   cash    (cover now)")
+    for r in rows:
+        when = "NOW" if r["days_until"] <= 0 else "in %4.0fd" % r["days_until"]
+        print("  %-9s %-28s %5d u  $%-6.0f  %4.0fd" % (when, r["name"][:28], r["qty"], r["cash"], r["cover"]))
+    print("\n  %d reorder(s) on the horizon · $%.0f total over 90 days" % (len(rows), win[90]))
+
+
 def _command(args):
     """EBE COMMAND — one consolidated daily action list across every operator branch."""
     import contextlib
@@ -380,8 +400,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
-                    help="a branch, or: command (daily list) / check / discover / venue / scout / edges / arbitrage / outcome")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
+                    help="a branch, or: command (today) / forecast (cash ahead) / check / discover / venue / scout / edges / arbitrage / outcome")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -428,6 +448,8 @@ def main(argv=None):
         return _outcome(args)
     if args.branch == "command":
         return _command(args)
+    if args.branch == "forecast":
+        return _forecast(args)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
