@@ -36,12 +36,20 @@ class DashboardRenderTests(unittest.TestCase):
         page = dashboard.render(dashboard._data(_args()))
         self.assertNotIn("<script", page.lower())
 
-    def test_landscape_venue_and_switcher_panels(self):
+    def test_landscape_nav_and_switcher_panels(self):
         page = dashboard.render(dashboard._data(_args()))
         self.assertIn("Landscape", page)
-        self.assertIn("Venue supplies", page)
+        self.assertIn("/venue?profile=", page)         # nav tab to the venue page
+        self.assertIn("/live?profile=", page)          # nav tab to the live page
         self.assertIn("/?profile=hookah", page)        # clickable profile switcher
         self.assertIn("http-equiv=refresh", page)      # auto-refresh
+
+    def test_subpages_render_forms_without_keys(self):
+        self.assertIn("action='/live'", dashboard.render_live(_args(), ""))
+        self.assertIn("textarea", dashboard.render_supply(_args(), ""))
+        venue = dashboard.render_venue(_args(), "")
+        self.assertIn("POS counts", venue)
+        self.assertIn("Coconut charcoal", venue)       # venue computes with no key needed
 
     def test_query_overrides_profile(self):
         a = dashboard._req_args(_args(profile="generic"), "profile=hookah&capital=2500")

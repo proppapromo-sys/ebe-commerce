@@ -18,14 +18,19 @@ python -m ebe dashboard       # open http://127.0.0.1:8765 — today + forecast 
 python -m ebe command         # ONE consolidated action list across every branch (terminal)
 ```
 
-`dashboard` is a pure-stdlib web UI (zero dependencies): today's actions, the cash forecast,
-the scout landscape, venue supplies, and the true-edge table on one auto-refreshing page —
-with a clickable profile switcher. Point it at a journal and you can **mark ✓ win / ✗ loss on
-each edge row**; the Learning panel shows proven-category trust and the edge table re-ranks
-itself — the compounding loop, on screen:
+`dashboard` is a pure-stdlib web **interface** (zero dependencies) with a top nav and four pages:
+
+- **Today** — daily action list, cash forecast, scout landscape, true-edge table (auto-refresh)
+- **Live Edge** — type ASINs → live Keepa true-edge + buy-the-dip arbitrage
+- **Supply · AI** — paste supplier listings → AI Ears normalize → cornerable shortlist
+- **Venue** — enter POS counts → supplies consumed → reorder timeline + cash
+
+A clickable **profile switcher** re-reads every page through any operator's lens. Point it at a
+journal and you can **mark ✓ win / ✗ loss** on each edge row; the Learning panel shows
+proven-category trust and the edge table re-ranks itself — the compounding loop, on screen.
 
 ```bash
-python -m ebe dashboard --journal record.jsonl --profile hookah
+python -m ebe dashboard --journal record.jsonl --profile hookah   # open http://127.0.0.1:8765
 ```
 ```
 ══ EBE COMMAND · TODAY ══
@@ -425,7 +430,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
 - [x] `forecast` — forward cash-flow (store + venue) with a capital runway/solvency check
 - [x] Cost-merge — overlay a real `sku,cost` sheet (and SP-API stock) onto any run via `--costs`
-- [x] `dashboard` — pure-stdlib web UI: today + forecast + landscape + venue + true-edge, profile switcher, click-to-record outcomes + Learning panel (zero deps)
+- [x] `dashboard` — pure-stdlib web INTERFACE: 4 pages (Today / Live Edge / Supply·AI / Venue) with input forms, profile switcher, click-to-record outcomes + Learning panel (zero deps)
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
