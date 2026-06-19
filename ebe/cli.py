@@ -153,6 +153,7 @@ def main(argv=None):
                     help="use the Claude AI brain for sourcing (needs ANTHROPIC_API_KEY + anthropic SDK)")
     ap.add_argument("--journal", metavar="JSONL", help="append every cleared decision to this record (learning loop)")
     ap.add_argument("--budget", type=float, default=None, help="cap total $ committed across all cleared actions this run (portfolio exposure)")
+    ap.add_argument("--max-calls", type=int, default=None, dest="max_calls", help="cap outbound API calls this run (Keepa/Anthropic/Amazon cost safety)")
     # discover filters (Keepa Product Finder)
     ap.add_argument("--category", help="discover: category (home, kitchen, health, beauty, sports, toys, pet, office, garden, baby, electronics, apparel)")
     ap.add_argument("--min-sales", type=int, default=300, dest="min_sales", help="discover: min monthly units sold (default 300)")
@@ -162,6 +163,10 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=30, help="discover: how many candidates to pull (default 30)")
     ap.add_argument("--cost-ratio", type=float, default=0.35, dest="cost_ratio", help="discover: assumed landed cost as a fraction of sell price (default 0.35)")
     args = ap.parse_args(argv)
+
+    if args.max_calls is not None:
+        from .adapters.base import Budget, set_budget
+        set_budget(Budget(args.max_calls))      # 🪙 cap outbound API spend this run
 
     if args.branch == "check":
         return _check()

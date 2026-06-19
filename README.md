@@ -166,6 +166,23 @@ Every branch implements the same skeleton in [`ebe/genome.py`](ebe/genome.py):
 **The five laws (the DNA):** risk-first · edge = you vs the world · forward-validate before
 real stakes · recognise+remember don't predict · confirm-first, never chase.
 
+### Genome v2 — the loop actually learns and guards itself
+
+```bash
+python -m ebe sourcing --journal record.jsonl   # write every decision (the record, law 4)
+python -m ebe all --budget 1000                  # cap TOTAL $ committed across all branches
+python -m ebe discover --category home --max-calls 50   # cap outbound API spend this run
+```
+
+- **Journal + LearningEyes** — decisions and outcomes are recorded; `pattern_trust()` turns
+  the record into trust, so patterns *graduate on evidence* (~3 clean wins) instead of sitting
+  inert. Laws 3 & 4, made real.
+- **Sanity gate** — impossible rows (cost ≤ 0, negatives, non-finite) are dropped at the Ears
+  before the Brain ever sees them.
+- **Portfolio cap** — one shared exposure ledger so clearing many SKUs can't over-commit.
+- **Retry + budget guards** — adapters retry transient API errors (429/5xx, `Retry-After`) and
+  honour a per-run call budget so live runs can't burn unlimited Keepa tokens / Anthropic spend.
+
 ### Grow a new branch
 
 ```python
@@ -213,6 +230,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Live API adapters — Keepa (sourcing) usable now; Amazon SP-API + Ads auth wired ([SETUP.md](SETUP.md))
 - [x] `discover` — Keepa Product Finder hands you ranked candidate products to evaluate
 - [x] AI Brain — Claude (`claude-opus-4-8`) estimates demand + confidence, caged by the Heart
+- [x] Genome v2 — closed learning loop (journal + LearningEyes), sanity gate, portfolio cap, retry/budget guards
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
