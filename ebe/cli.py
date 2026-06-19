@@ -30,7 +30,20 @@ from .branches import sourcing, pricing, inventory, adspend, returns
 BRANCHES = ("sourcing", "pricing", "inventory", "adspend", "returns")
 
 
-def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None, portfolio=None):
+def _maybe_apply_costs(products, args):
+    """Overlay a real sku,cost sheet onto a product list (no-op without --costs)."""
+    if products and getattr(args, "costs", None):
+        from .costs import load_cost_sheet, apply_costs
+        apply_costs(products, load_cost_sheet(args.costs))
+    return products
+
+
+def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, journal=None, portfolio=None, costs=None):
+    def _cost(ps):
+        if costs and ps:
+            from .costs import apply_costs
+            apply_costs(ps, costs)
+        return ps
     if name == "sourcing" and keepa_products is not None:
         prods, src = keepa_products, "Keepa LIVE"
     elif products is not None or campaigns is not None:
@@ -39,20 +52,20 @@ def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False, 
         prods, src = None, "sample data"
     if name == "sourcing" and ai:
         src += " · 🧠 AI brain"
-    print("\n══ %s ══ (fees: %s · %s)" % (name.upper(), fee_model.name, src))
+    print("\n══ %s ══ (fees: %s · %s%s)" % (name.upper(), fee_model.name, src, " · real costs" if costs else ""))
 
     if name == "sourcing":
-        prods = prods if prods is not None else sample_sourcing_catalog()
+        prods = _cost(prods if prods is not None else sample_sourcing_catalog())
         if ai:
             from .ai import brain
             m = brain.build(ListFeed(prods), fee_model=fee_model)
         else:
             m = sourcing.build(ListFeed(prods), fee_model=fee_model)
     elif name == "pricing":
-        prods = products if products is not None else sample_live_catalog()
+        prods = _cost(products if products is not None else sample_live_catalog())
         m = pricing.build(ListFeed(prods), fee_model=fee_model)
     elif name == "inventory":
-        prods = products if products is not None else sample_live_catalog()
+        prods = _cost(products if products is not None else sample_live_catalog())
         m = inventory.build(prods)
     elif name == "adspend":
         m = adspend.build(campaigns=campaigns, fee_model=fee_model)
@@ -311,7 +324,7 @@ def _forecast(args):
         rows = forecast.venue_calendar(sales, menu, consumables, period_days=args.period)
         title = "CASH FORECAST · VENUE SUPPLIES"
     else:
-        prods = load_products(args.products) if args.products else sample_live_catalog()
+        prods = _maybe_apply_costs(load_products(args.products) if args.products else sample_live_catalog(), args)
         rows = forecast.cash_calendar(prods)
         title = "CASH FORECAST"
     win = forecast.windows(rows)
@@ -345,8 +358,8 @@ def _command(args):
     fee_model = PRESETS[args.fees]
     products = load_products(args.products) if args.products else None
     campaigns = load_campaigns(args.campaigns) if args.campaigns else None
-    live = products if products is not None else sample_live_catalog()
-    src = products if products is not None else sample_sourcing_catalog()
+    live = _maybe_apply_costs(products if products is not None else sample_live_catalog(), args)
+    src = _maybe_apply_costs(products if products is not None else sample_sourcing_catalog(), args)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):           # silence each branch; we render one report
@@ -428,6 +441,7 @@ def main(argv=None):
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
     ap.add_argument("--products", metavar="CSV", help="products/inventory CSV (see examples/products.csv)")
+    ap.add_argument("--costs", metavar="CSV", help="overlay real per-SKU costs (sku,cost[,fulfilment]) — see examples/costs.csv")
     ap.add_argument("--campaigns", metavar="CSV", help="ad campaigns CSV (see examples/campaigns.csv)")
     ap.add_argument("--asin-costs", metavar="CSV", dest="asin_costs",
                     help="asin,cost CSV -> LIVE sourcing via Keepa (needs KEEPA_API_KEY)")
@@ -497,6 +511,10 @@ def main(argv=None):
     fee_model = PRESETS[args.fees]
     products = load_products(args.products) if args.products else None
     campaigns = load_campaigns(args.campaigns) if args.campaigns else None
+    costs_sheet = None
+    if args.costs:
+        from .costs import load_cost_sheet
+        costs_sheet = load_cost_sheet(args.costs)
     keepa_products = None
     if args.asin_costs:
         from .adapters.keepa import sourcing_candidates
@@ -519,7 +537,7 @@ def main(argv=None):
     for name in names:
         try:
             _run(name, fee_model, args.place, products, campaigns, keepa_products,
-                 ai=args.ai, journal=journal, portfolio=portfolio)
+                 ai=args.ai, journal=journal, portfolio=portfolio, costs=costs_sheet)
         except AdapterError as e:
             raise SystemExit("%s failed: %s\n(run `python -m ebe check`, see SETUP.md)" % (name, e))
 

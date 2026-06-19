@@ -65,6 +65,15 @@ python -m ebe sourcing --products my_catalog.csv --fees amazon-apparel
 python -m ebe adspend  --campaigns my_ads.csv
 ```
 
+Keep your real **supplier costs** in their own sheet (they change independently of the
+catalog) and overlay them onto *any* run — sample, CSV, or live:
+
+```bash
+python -m ebe command --costs examples/costs.csv --capital 20000   # real margins everywhere
+```
+
+`apply_stock()` does the same for live on-hand from Amazon SP-API (`ebe/costs.py`).
+
 **`products.csv`** — one row per SKU; apparel repeats the product columns, one row per
 size/colour variant (see [`examples/products.csv`](examples/products.csv)):
 
@@ -388,6 +397,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Compounding edge — journal outcomes become per-category trust; proven lanes auto-sharpen each run
 - [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
 - [x] `forecast` — forward cash-flow (store + venue) with a capital runway/solvency check
+- [x] Cost-merge — overlay a real `sku,cost` sheet (and SP-API stock) onto any run via `--costs`
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
