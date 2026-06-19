@@ -24,7 +24,7 @@ import types
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-NAV = [("/", "Today", "today"), ("/rebuy", "Re-buy", "rebuy"),
+NAV = [("/brief", "Brief", "brief"), ("/", "Today", "today"), ("/rebuy", "Re-buy", "rebuy"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"),
        ("/venue", "Venue", "venue")]
 
@@ -415,6 +415,9 @@ def render_rebuy(args):
         "</div>" % (len(proposals), round(pcash), len(drafts) + len(ordered), len(ordered)))
 
     p = urllib.parse.quote(prof)
+    sheetbtn = ("<a class='btn ghost sm' href='/sheet?profile=%s'>📄 Order sheet</a>" % p) if (drafts or ordered) else ""
+    if sheetbtn:
+        inner.append("<div class=card>%s</div>" % sheetbtn)
     if proposals:
         raiseall = ("<a class='btn go sm' href='/po?raiseall=1&profile=%s'>⚡ Raise all drafts</a>" % p) if live else ""
         inner.append("<h2>📉 Proposed re-buys %s</h2>" % raiseall)
@@ -478,6 +481,94 @@ def _do_po(args, qs):
             store.cancel_po(int(qs["cancel"][0]))
     except (ValueError, KeyError):
         pass
+
+
+# ── BRIEF page (the morning rundown) ─────────────────────────────────────────
+def render_brief(args):
+    from . import brief as briefmod
+    from .fees import PRESETS
+    import datetime
+    store, live, db = _store_for(args)
+    b = briefmod.compose(store, profile=args.profile or "generic", fee=PRESETS[args.fees])
+    prof = args.profile or "generic"
+    p = urllib.parse.quote(prof)
+    date = datetime.date.today().strftime("%A %d %B %Y")
+
+    inner = ["<h2>🛰️ Morning brief · %s</h2>" % _esc(date)]
+    if not live:
+        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours with "
+                     "<b>python -m ebe catalog --products data\\products.csv</b> to brief on real stock.</div>")
+    inner.append("<div class=card><span class=big>Good morning.</span> Systems online. "
+                 "<span class=sub>profile: %s</span></div>" % _esc(prof))
+    inner.append(
+        "<div class=metrics>"
+        "<div class='metric'><div class=k>SKUs tracked</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric alert'><div class=k>Under reorder line</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric'><div class=k>Cash to commit</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric'><div class=k>On-hand value</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric go'><div class=k>In transit</div><div class=v data-count='%d'>0</div></div>"
+        "</div>" % (b["products"], b["low"], round(b["cash_to_commit"]), round(b["inv_value"]), b["ordered"]))
+
+    inner.append("<div class=card><b>➡️ One move that matters today</b><br><span class=big>%s</span></div>" % _esc(b["move"]))
+
+    actions = []
+    if b["low"]:
+        actions.append("<a class='btn sm' href='/rebuy?profile=%s'>🚚 %d re-buys → review</a>" % (p, b["low"]))
+    if b["drafts"]:
+        actions.append("<a class='btn go sm' href='/sheet?profile=%s'>📄 %d order(s) → send</a>" % (p, b["drafts"]))
+    if actions:
+        inner.append("<div class=card>%s</div>" % " ".join(actions))
+
+    if b["top"]:
+        inner.append("<h2>🚚 Top re-buys</h2><table><tr><th>product<th class=r>units<th class=r>cash<th class=r>cover</tr>")
+        for t in b["top"]:
+            inner.append("<tr><td>%s<td class=r>%d<td class=r>$%.0f<td class=r>%.0fd</tr>"
+                         % (_esc(t["name"]), t["qty"], t["cash"], t["cover_days"]))
+        inner.append("</table>")
+
+    if b["watch"]:
+        inner.append("<h2>🧭 On the radar</h2><table><tr><th>product<th class=r>EDGE<th class=r>moat<th>verdict</tr>")
+        for e in b["watch"]:
+            inner.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span></tr>"
+                         % (_esc(e.item["name"]), e.composite * 100, e.moat * 100, e.verdict, e.verdict))
+        inner.append("</table>")
+    return _shell(_ctx_from_args(args), "brief", "".join(inner), refresh=True)
+
+
+# ── ORDER SHEET view (sendable POs grouped by supplier) ──────────────────────
+def render_sheet(args):
+    from .purchasing import orders_by_supplier
+    store, live, db = _store_for(args)
+    groups = orders_by_supplier(store, ("draft", "ordered"))
+    inner = ["<h2>📄 Order sheets · by supplier</h2>"]
+    if not groups:
+        inner.append("<div class=card><span class=ok>✓ No open orders</span> — nothing to send right now.</div>")
+        return _shell(_ctx_from_args(args), "rebuy", "".join(inner))
+    grand = 0.0
+    for supplier in sorted(groups, key=lambda s: (s == "", s.lower())):
+        pos = groups[supplier]
+        contact = store.supplier(supplier) if supplier else None
+        sub = sum(po["cash"] for po in pos)
+        grand += sub
+        head = _esc(supplier or "Unassigned supplier")
+        inner.append("<div class=card><b class=big>%s</b>" % head)
+        if contact:
+            bits = " · ".join(_esc(x) for x in (contact.get("email"), contact.get("phone"), contact.get("link")) if x)
+            if bits:
+                inner.append("<br><span class=sub>%s</span>" % bits)
+            if contact.get("min_order"):
+                inner.append(" <span class=sub>· min $%.0f</span>" % contact["min_order"])
+        elif supplier:
+            inner.append("<br><span class=warn>No contact on file — add suppliers.csv</span>")
+        inner.append("<table><tr><th>PO<th>SKU<th>item<th class=r>qty<th class=r>unit<th class=r>total</tr>")
+        for po in sorted(pos, key=lambda x: x["id"]):
+            inner.append("<tr><td>#%d<td>%s<td>%s<td class=r>%d<td class=r>$%.2f<td class=r>$%.2f</tr>"
+                         % (po["id"], _esc(po["sku"]), _esc(po["name"]), po["qty"], po["unit_cost"], po["cash"]))
+        inner.append("<tr><td colspan=5 class=r><b>Subtotal</b><td class=r><b>$%.2f</b></tr></table></div>" % sub)
+    inner.append("<div class=card><span class=big>TOTAL TO AUTHORISE: $%.0f</span> · %d supplier(s) · "
+                 "<span class=sub>run <b>python -m ebe po --out orders.md</b> to export</span></div>"
+                 % (grand, len(groups)))
+    return _shell(_ctx_from_args(args), "rebuy", "".join(inner))
 
 
 # ── LIVE EDGE page (Keepa) ───────────────────────────────────────────────────
@@ -612,8 +703,12 @@ def serve(args):
             try:
                 if path in ("/", ""):
                     body = render(_data(a))
+                elif path == "/brief":
+                    body = render_brief(a)
                 elif path == "/rebuy":
                     body = render_rebuy(a)
+                elif path == "/sheet":
+                    body = render_sheet(a)
                 elif path == "/live":
                     body = render_live(a, (qs.get("asins") or [""])[0])
                 elif path == "/supply":

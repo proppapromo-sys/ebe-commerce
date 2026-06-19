@@ -558,6 +558,16 @@ def _orders(args):
               % (po["id"], po["status"], po["name"][:22], po["qty"], po["cash"], po["reason"] or ""))
 
 
+def _brief(args):
+    """The morning brief — the whole operation in one read, from the live database."""
+    import datetime
+    from .store import Store
+    from . import brief as briefmod
+    s = Store(_db_path(args))
+    b = briefmod.compose(s, profile=args.profile or "generic", fee=PRESETS[args.fees])
+    print(briefmod.render_text(b, datetime.date.today().strftime("%A %d %B %Y")))
+
+
 def _suppliers(args):
     """Load a suppliers CSV into the database, then list the directory."""
     from .store import Store
@@ -646,8 +656,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -744,6 +754,8 @@ def main(argv=None):
         return _sell(args)
     if args.branch == "po":
         return _po(args)
+    if args.branch == "brief":
+        return _brief(args)
     if args.branch == "sync":
         from .adapters.base import AdapterError
         try:

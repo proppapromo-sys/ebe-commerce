@@ -39,6 +39,16 @@ class DashboardRenderTests(unittest.TestCase):
         self.assertEqual(dashboard._esc("<script>x</script>"),
                          "&lt;script&gt;x&lt;/script&gt;")  # escaper neutralizes markup
 
+    def test_brief_tab_renders(self):
+        page = dashboard.render_brief(_args())
+        self.assertIn("Morning brief", page)
+        self.assertIn("One move", page)
+        self.assertIn("data-count", page)              # animated metric tiles
+
+    def test_sheet_view_groups_or_empties(self):
+        page = dashboard.render_sheet(_args())
+        self.assertIn("Order sheets", page)            # renders even with no live POs
+
     def test_rebuy_tab_renders_proposals(self):
         import os
         import tempfile
