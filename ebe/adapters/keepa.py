@@ -16,12 +16,29 @@ Docs: https://keepa.com/#!discuss/t/product-object   https://keepa.com/#!api
 from __future__ import annotations
 
 import csv
+import json
 
 from . import config
 from .base import request_json, AdapterError
 from ..catalog.product import Product
 
 KEEPA_DOMAINS = {"us": 1, "uk": 2, "de": 3, "fr": 4, "jp": 5, "ca": 6, "it": 8, "es": 9, "in": 10, "mx": 11}
+
+# A few common Amazon-US root category browse-node IDs Keepa's Product Finder accepts.
+KEEPA_CATEGORIES = {
+    "home": 1055398,        # Home & Kitchen
+    "kitchen": 1055398,
+    "health": 3760901,      # Health & Household
+    "beauty": 3760911,      # Beauty & Personal Care
+    "sports": 3375251,      # Sports & Outdoors
+    "toys": 165793011,      # Toys & Games
+    "pet": 2619533011,      # Pet Supplies
+    "office": 1064954,      # Office Products
+    "garden": 2972638011,   # Patio, Lawn & Garden
+    "baby": 165796011,      # Baby
+    "electronics": 172282,  # Electronics
+    "apparel": 7141123011,  # Clothing, Shoes & Jewelry
+}
 
 
 class KeepaClient:
@@ -45,6 +62,14 @@ class KeepaClient:
             "asin": ",".join(asins), "stats": 1, "buybox": 1,
         })
         return data.get("products", []) or []
+
+    def product_finder(self, selection):
+        """Keepa Product Finder — returns a list of ASINs matching a selection dict.
+        Docs: https://keepa.com/#!discuss/t/product-finder/5473"""
+        data = request_json("GET", "https://api.keepa.com/query", params={
+            "key": self.key, "domain": self.domain, "selection": json.dumps(selection),
+        })
+        return data.get("asinList", []) or []
 
 
 # ── mapping (pure functions — unit-tested without the network) ───────────────
@@ -120,4 +145,42 @@ def sourcing_candidates(asin_cost_path, client=None, domain="us"):
         kp = by_asin.get(asin)
         if kp:
             out.append(to_product(kp, cost, ful))
+    return out
+
+
+# ── DISCOVERY — let Keepa hand you candidate products (not the other way round) ─
+def build_selection(category=None, min_monthly=100, min_price=15.0, max_price=60.0,
+                    max_sellers=None, limit=30):
+    """Translate friendly filters into a Keepa Product-Finder selection."""
+    sel = {
+        "perPage": int(limit),
+        "page": 0,
+        "monthlySold_gte": int(min_monthly),
+        "current_BUY_BOX_SHIPPING_gte": int(round(min_price * 100)),
+        "current_BUY_BOX_SHIPPING_lte": int(round(max_price * 100)),
+        "sort": [["monthlySold", "desc"]],
+    }
+    if category and category.lower() in KEEPA_CATEGORIES:
+        sel["rootCategory"] = [KEEPA_CATEGORIES[category.lower()]]
+    if max_sellers is not None:
+        sel["current_COUNT_NEW_lte"] = int(max_sellers)
+    return sel
+
+
+def discover_candidates(category=None, min_monthly=100, min_price=15.0, max_price=60.0,
+                        max_sellers=None, limit=30, cost_ratio=0.35, client=None, domain="us"):
+    """Keepa Product Finder -> enriched candidates with an ASSUMED landed cost.
+
+    Discovery finds high-demand / low-competition products for you; it can't know your
+    real cost, so cost is set to `cost_ratio` × sell price (a labelled placeholder you
+    replace with real supplier quotes for the shortlist that survives)."""
+    client = client or KeepaClient(domain=domain)
+    asins = client.product_finder(build_selection(
+        category, min_monthly, min_price, max_price, max_sellers, limit))
+    out = []
+    for kp in client.fetch(asins[:limit]):
+        sell = keepa_sell_price(kp)
+        if sell <= 0:
+            continue
+        out.append(to_product(kp, cost=round(sell * cost_ratio, 2)))
     return out

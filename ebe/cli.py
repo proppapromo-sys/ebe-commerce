@@ -96,9 +96,48 @@ def _check():
     print("\n(fill .env from .env.example — see SETUP.md)")
 
 
+def _discover(args, fee_model):
+    """Keepa Product Finder -> ranked shortlist of candidate products, scored after fees."""
+    from .adapters.keepa import discover_candidates
+    from .branches.sourcing import SourcingEdge, SourcingRisk
+
+    print("\n══ DISCOVER ══ (Keepa Product Finder · fees: %s)" % fee_model.name)
+    print("  filters: category=%s · sales≥%d/mo · $%g–$%g · sellers≤%s · cost≈%d%% of price\n"
+          % (args.category or "any", args.min_sales, args.min_price, args.max_price,
+             args.max_sellers if args.max_sellers is not None else "any", int(args.cost_ratio * 100)))
+    prods = discover_candidates(
+        category=args.category, min_monthly=args.min_sales, min_price=args.min_price,
+        max_price=args.max_price, max_sellers=args.max_sellers, limit=args.limit,
+        cost_ratio=args.cost_ratio)
+    if not prods:
+        print("  no products matched — loosen the filters (lower --min-sales, widen price, raise --max-sellers).")
+        return
+
+    edge_m, risk = SourcingEdge(fee_model), SourcingRisk(2000)
+    rows = []
+    for p in prods:
+        item = p.as_item()
+        roi = edge_m.edge(item)                     # ROI after fees at the ASSUMED cost
+        ok, _, _ = risk.gate(item, roi)
+        rows.append((item, roi, ok))
+    rows.sort(key=lambda r: r[0]["monthly_sales"], reverse=True)
+
+    print("   # ASIN        sold/mo  price   comp  ROI*  gate  product")
+    for i, (it, roi, ok) in enumerate(rows, 1):
+        print("  %2d %-11s %6.0f  $%-6.2f %3.0f%%  %3.0f%%  %s  %s"
+              % (i, it["id"], it["monthly_sales"], it["sell"], it["competition"] * 100,
+                 roi * 100, "✅" if ok else "— ", it["name"][:38]))
+    cleared = sum(1 for _, _, ok in rows if ok)
+    print("\n  %d candidate(s), %d clear the gate at the assumed cost." % (len(rows), cleared))
+    print("  * ROI assumes landed cost = %d%% of sell price — get REAL supplier quotes for the ✅ ones,"
+          % int(args.cost_ratio * 100))
+    print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Commerce — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check"), help="which branch to run (or 'check')")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover"),
+                    help="which branch to run (or 'check' / 'discover')")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -108,10 +147,24 @@ def main(argv=None):
                     help="asin,cost CSV -> LIVE sourcing via Keepa (needs KEEPA_API_KEY)")
     ap.add_argument("--ai", action="store_true",
                     help="use the Claude AI brain for sourcing (needs ANTHROPIC_API_KEY + anthropic SDK)")
+    # discover filters (Keepa Product Finder)
+    ap.add_argument("--category", help="discover: category (home, kitchen, health, beauty, sports, toys, pet, office, garden, baby, electronics, apparel)")
+    ap.add_argument("--min-sales", type=int, default=300, dest="min_sales", help="discover: min monthly units sold (default 300)")
+    ap.add_argument("--min-price", type=float, default=15.0, dest="min_price", help="discover: min sell price (default 15)")
+    ap.add_argument("--max-price", type=float, default=60.0, dest="max_price", help="discover: max sell price (default 60)")
+    ap.add_argument("--max-sellers", type=int, default=None, dest="max_sellers", help="discover: max competing sellers")
+    ap.add_argument("--limit", type=int, default=30, help="discover: how many candidates to pull (default 30)")
+    ap.add_argument("--cost-ratio", type=float, default=0.35, dest="cost_ratio", help="discover: assumed landed cost as a fraction of sell price (default 0.35)")
     args = ap.parse_args(argv)
 
     if args.branch == "check":
         return _check()
+    if args.branch == "discover":
+        from .adapters.base import AdapterError
+        try:
+            return _discover(args, PRESETS[args.fees])
+        except AdapterError as e:
+            raise SystemExit("discover failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
 
     fee_model = PRESETS[args.fees]
     products = load_products(args.products) if args.products else None

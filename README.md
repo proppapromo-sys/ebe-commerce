@@ -78,6 +78,21 @@ Live sourcing today (Keepa key + an `asin,cost` sheet of supplier quotes):
 python -m ebe sourcing --asin-costs examples/asin_costs.csv --fees amazon-fba
 ```
 
+### Discover — let the engine *find* products for you
+
+`discover` queries Keepa's Product Finder by your filters, pulls back a ranked shortlist of
+real ASINs (high demand, low competition, in your price band), and scores each after fees:
+
+```bash
+python -m ebe discover --category home --min-sales 300 --max-price 50 --max-sellers 8
+```
+
+Discovery finds candidates; it can't know your **cost**, so it assumes a labelled
+`--cost-ratio` (default 35% of sell price) just to rank them. The flow: *engine surfaces
+20 candidates → you get real supplier quotes for the few that clear → re-run `sourcing
+--asin-costs` with the true cost.* Categories: home, kitchen, health, beauty, sports,
+toys, pet, office, garden, baby, electronics, apparel.
+
 ### AI brain (Claude, caged by the genome)
 
 The `--ai` flag puts **Claude (`claude-opus-4-8`)** in the BRAIN organ: it estimates a
@@ -196,6 +211,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] First-class apparel/merch (variants + apparel economics)
 - [x] CSV import — run every branch on your own catalog / inventory / campaigns
 - [x] Live API adapters — Keepa (sourcing) usable now; Amazon SP-API + Ads auth wired ([SETUP.md](SETUP.md))
+- [x] `discover` — Keepa Product Finder hands you ranked candidate products to evaluate
 - [x] AI Brain — Claude (`claude-opus-4-8`) estimates demand + confidence, caged by the Heart
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
