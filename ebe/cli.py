@@ -558,6 +558,28 @@ def _orders(args):
               % (po["id"], po["status"], po["name"][:22], po["qty"], po["cash"], po["reason"] or ""))
 
 
+def _sync(args):
+    """Pull live Amazon stock into the database, then show what moved."""
+    from .store import Store
+    from .sync import sync_stock
+    from .adapters.amazon_spapi import SpApiClient
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    client = SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
+    res = sync_stock(s, client, prices=getattr(args, "with_prices", False))
+    print("\n══ EBE COMMAND · LIVE STOCK SYNC (Amazon SP-API) ══")
+    for sku, units in res["updated"]:
+        print("  ✓ %-24s on_hand → %d" % (sku[:24], units))
+    if res["priced"]:
+        for sku, amount in res["priced"]:
+            print("  $ %-24s sell → %.2f" % (sku[:24], amount))
+    if res["unknown"]:
+        print("  ⚠ %d SKU(s) Amazon reports but not in your catalog: %s"
+              % (len(res["unknown"]), ", ".join(res["unknown"][:8])))
+    print("  ── %d SKUs updated. Now run:  python -m ebe rebuy" % len(res["updated"]))
+
+
 def _venue(args):
     """Venue supply tracking — POS counts -> supplies consumed -> reorder."""
     from .venue import engine
@@ -570,8 +592,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -623,6 +645,9 @@ def main(argv=None):
     ap.add_argument("--status", help="orders: filter by status (draft|ordered|received|cancelled)")
     ap.add_argument("--approve", type=int, metavar="PO", help="orders: mark a draft PO as ordered")
     ap.add_argument("--receive", type=int, metavar="PO", help="orders: receive a PO — adds its units back into stock")
+    ap.add_argument("--region", help="sync: SP-API region na|eu|fe (default na)")
+    ap.add_argument("--marketplace", help="sync: marketplace us|ca|uk|de|... (default us)")
+    ap.add_argument("--with-prices", action="store_true", dest="with_prices", help="sync: also pull your live listing prices")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -658,6 +683,12 @@ def main(argv=None):
         return _rebuy(args)
     if args.branch == "orders":
         return _orders(args)
+    if args.branch == "sync":
+        from .adapters.base import AdapterError
+        try:
+            return _sync(args)
+        except AdapterError as e:
+            raise SystemExit("sync failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
