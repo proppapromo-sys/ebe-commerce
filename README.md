@@ -165,8 +165,14 @@ AI lives inside specific organs and is bounded by the five laws — never given 
 | 👁️ Eyes | recognize products / trends | a pattern graduates only on proof |
 | 🩸 TruthMeter | **none** — measures real sell-through | ✅ **keeps AI honest** |
 
-Shipped: the **AI Brain** (Opus, demand+confidence) and **AI Eyes** (Haiku, pattern
-recognition). Next: AI Ears (supplier-data normalization).
+Shipped: **AI Brain** (Opus, demand+confidence), **AI Eyes** (Haiku, pattern recognition),
+and **AI Ears** (Haiku, supplier-data normalization) — the full AI organ set, all caged.
+
+```bash
+python -m ebe ears --file examples/supplier_listings.txt --out catalog.csv
+# turns "Hookah Mouth Tips 1000pcs/box $30 MOQ 10" into clean {name,category,cost,sell} rows
+python -m ebe sourcing --products catalog.csv     # then score them
+```
 
 ```bash
 python -m ebe sourcing --ai-eyes      # Claude names product patterns (premium / trend:rising /
@@ -421,7 +427,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [x] AI Eyes — Claude (Haiku) recognises product patterns (+ optional image vision), caged by the journal
-- [ ] AI Ears (supplier-data normalization) on Haiku
+- [x] AI Ears — Claude (Haiku) normalizes messy supplier listings into clean Product rows
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns

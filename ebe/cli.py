@@ -273,6 +273,29 @@ def _edges(args):
     print("\n  angles: mrg=margin dmd=demand cmp=open-lane adv=your-advantage rec=recurring tim=trend arb=arbitrage")
 
 
+def _ears(args):
+    """AI Ears — normalize messy supplier listings into clean, scoreable Product rows."""
+    if not args.file:
+        raise SystemExit("--file listings.txt required (one supplier listing per line)")
+    from .ai.ears import normalize_listings
+    with open(args.file, encoding="utf-8") as fh:
+        lines = [ln.strip() for ln in fh if ln.strip()]
+    prods = normalize_listings(lines)
+
+    print("\n══ EBE COMMAND · AI EARS ══ (normalized %d listing(s))\n" % len(prods))
+    print("  id    name                              category    cost    sell")
+    for p in prods:
+        print("  %-5s %-32s %-10s $%-6.2f $%-6.2f" % (p.id, p.name[:32], p.category, p.cost, p.sell))
+    if args.out:
+        import csv
+        with open(args.out, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["id", "name", "category", "cost", "sell", "fulfilment", "competition"])
+            for p in prods:
+                w.writerow([p.id, p.name, p.category, p.cost, p.sell, p.fulfilment, p.competition])
+        print("\n  → wrote %s (run: python -m ebe sourcing --products %s)" % (args.out, args.out))
+
+
 def _scout(args):
     """Survey a market through a Profile — landscape map + ranked, personalised opportunities."""
     from .profile import PROFILES
@@ -441,8 +464,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome"),
-                    help="a branch, or: command / forecast / dashboard (web UI) / check / discover / venue / scout / edges / arbitrage / outcome")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -476,6 +499,9 @@ def main(argv=None):
     ap.add_argument("--profile", help="scout/edges: operator profile (hookah, generic, cautious, aggressive)")
     # dashboard
     ap.add_argument("--port", type=int, default=None, help="dashboard: port (default 8765)")
+    # ears
+    ap.add_argument("--file", help="ears: text file of supplier listings (one per line)")
+    ap.add_argument("--out", help="ears: write the normalized rows to this products CSV")
     # arbitrage
     ap.add_argument("--asins", help="arbitrage/edges: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
     ap.add_argument("--alt", metavar="CSV", help="arbitrage: cross-channel prices CSV (channel,identifier,price)")
@@ -502,6 +528,12 @@ def main(argv=None):
     if args.branch == "dashboard":
         from . import dashboard
         return dashboard.serve(args)
+    if args.branch == "ears":
+        from .adapters.base import AdapterError
+        try:
+            return _ears(args)
+        except AdapterError as e:
+            raise SystemExit("ears failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
