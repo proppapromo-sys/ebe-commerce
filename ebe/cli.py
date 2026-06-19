@@ -558,6 +558,60 @@ def _orders(args):
               % (po["id"], po["status"], po["name"][:22], po["qty"], po["cash"], po["reason"] or ""))
 
 
+def _suppliers(args):
+    """Load a suppliers CSV into the database, then list the directory."""
+    from .store import Store
+    s = Store(_db_path(args))
+    if args.file:
+        from .purchasing import load_supplier_rows
+        n = s.upsert_suppliers(load_supplier_rows(args.file))
+        print("📇 imported %d supplier(s) from %s" % (n, args.file))
+    sup = s.suppliers()
+    print("\n══ SUPPLIERS · %s (%d) ══" % (s.path, len(sup)))
+    for r in sup:
+        contact = " · ".join(x for x in (r.get("email"), r.get("phone"), r.get("link")) if x)
+        print("  %-22s lead %2dd  min $%-6.0f %s" % (r["name"][:22], r["lead_time_days"], r["min_order"], contact))
+
+
+def _sell(args):
+    """Record sales so on-hand stock drops (the consumption side of the loop)."""
+    from .store import Store
+    s = Store(_db_path(args))
+    counts = {}
+    if args.products:
+        import csv as _csv
+        with open(args.products, newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                sku = (row.get("sku") or row.get("id") or "").strip()
+                units = (row.get("units") or row.get("qty") or row.get("monthly_sales") or "").strip()
+                if sku and units:
+                    try:
+                        counts[sku] = int(float(units))
+                    except ValueError:
+                        pass
+    elif args.id and args.units is not None:
+        counts[args.id] = int(args.units)
+    else:
+        raise SystemExit("usage: ebe sell --id SKU --units N   |   ebe sell --products sales.csv (sku,units)")
+    n = s.record_sales(counts)
+    print("🧾 recorded sales for %d SKU(s); stock dropped. Run `python -m ebe rebuy` to see new POs." % n)
+
+
+def _po(args):
+    """Render open purchase orders as supplier-grouped, sendable order sheets."""
+    from .store import Store
+    from .purchasing import po_document
+    s = Store(_db_path(args))
+    statuses = (args.status,) if args.status else ("draft", "ordered")
+    doc = po_document(s, statuses=statuses)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(doc)
+        print("📄 wrote order sheet → %s" % args.out)
+    else:
+        print(doc)
+
+
 def _sync(args):
     """Pull live Amazon stock into the database, then show what moved."""
     from .store import Store
@@ -592,8 +646,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync"),
-                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po"),
+                    help="a branch, or: command / forecast / dashboard / check / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -648,6 +702,7 @@ def main(argv=None):
     ap.add_argument("--region", help="sync: SP-API region na|eu|fe (default na)")
     ap.add_argument("--marketplace", help="sync: marketplace us|ca|uk|de|... (default us)")
     ap.add_argument("--with-prices", action="store_true", dest="with_prices", help="sync: also pull your live listing prices")
+    ap.add_argument("--units", type=int, help="sell: units sold for --id SKU (drops on-hand stock)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -683,6 +738,12 @@ def main(argv=None):
         return _rebuy(args)
     if args.branch == "orders":
         return _orders(args)
+    if args.branch == "suppliers":
+        return _suppliers(args)
+    if args.branch == "sell":
+        return _sell(args)
+    if args.branch == "po":
+        return _po(args)
     if args.branch == "sync":
         from .adapters.base import AdapterError
         try:

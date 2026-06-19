@@ -61,7 +61,18 @@ CREATE TABLE IF NOT EXISTS events (
     qty     INTEGER,
     note    TEXT
 );
+CREATE TABLE IF NOT EXISTS suppliers (
+    name           TEXT PRIMARY KEY,
+    email          TEXT,
+    phone          TEXT,
+    link           TEXT,
+    lead_time_days INTEGER NOT NULL DEFAULT 21,
+    min_order      REAL NOT NULL DEFAULT 0,
+    notes          TEXT
+);
 """
+
+_SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order", "notes")
 
 # columns the catalog importer understands (anything else in a row is ignored)
 _PRODUCT_COLS = ("sku", "name", "category", "cost", "sell", "fulfilment",
@@ -188,6 +199,44 @@ class Store:
     def purchase_order(self, po_id):
         row = self._cx.execute("SELECT * FROM purchase_orders WHERE id=?", (po_id,)).fetchone()
         return dict(row) if row else None
+
+    # ---- suppliers -----------------------------------------------------------
+    def upsert_suppliers(self, rows) -> int:
+        n = 0
+        for raw in rows:
+            r = {k: raw.get(k) for k in _SUPPLIER_COLS if k in raw}
+            name = (r.get("name") or "").strip()
+            if not name:
+                continue
+            r["name"] = name
+            cols = list(r.keys())
+            ph = ",".join("?" for _ in cols)
+            upd = ",".join("%s=excluded.%s" % (c, c) for c in cols if c != "name")
+            self._cx.execute(
+                "INSERT INTO suppliers (%s) VALUES (%s) ON CONFLICT(name) DO UPDATE SET %s"
+                % (",".join(cols), ph, upd), [r[c] for c in cols])
+            n += 1
+        self._cx.commit()
+        return n
+
+    def suppliers(self) -> list:
+        cur = self._cx.execute("SELECT * FROM suppliers ORDER BY name")
+        return [dict(row) for row in cur.fetchall()]
+
+    def supplier(self, name):
+        if not name:
+            return None
+        row = self._cx.execute("SELECT * FROM suppliers WHERE name=?", (name,)).fetchone()
+        return dict(row) if row else None
+
+    def record_sales(self, counts) -> int:
+        """Bulk record sales from a {sku: units} mapping. Returns SKUs touched."""
+        n = 0
+        for sku, units in dict(counts).items():
+            if self.product(sku):
+                self.record_sale(sku, units)
+                n += 1
+        return n
 
     # ---- events --------------------------------------------------------------
     def _log(self, kind, sku=None, qty=None, note=None) -> None:

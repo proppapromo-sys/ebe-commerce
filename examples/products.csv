@@ -1,9 +1,9 @@
-id,name,category,cost,sell,fulfilment,competition,lead_time_days,elasticity,size,color,on_hand,monthly_sales
-P1,LED strip lights,home,5,22,4,0.4,18,1.8,,,900,800
-P3,Yoga mat (premium),fitness,14,45,6,0.5,30,1.2,,,120,300
-M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,S,Black,15,40
-M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,M,Black,60,120
-M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,L,Black,8,90
-M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,M,White,110,70
-M2,Embroidered cap,apparel,7,24,4,0.7,25,2.0,OS,Navy,40,150
-M2,Embroidered cap,apparel,7,24,4,0.7,25,2.0,OS,Khaki,5,80
+id,name,category,cost,sell,fulfilment,competition,lead_time_days,elasticity,size,color,on_hand,monthly_sales,supplier
+P1,LED strip lights,home,5,22,4,0.4,18,1.8,,,900,800,Generic Imports LLC
+P3,Yoga mat (premium),fitness,14,45,6,0.5,30,1.2,,,120,300,Generic Imports LLC
+M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,S,Black,15,40,Apparel Mill Co
+M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,M,Black,60,120,Apparel Mill Co
+M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,L,Black,8,90,Apparel Mill Co
+M1,Graphic tee (your brand),apparel,9,28,5,0.5,21,1.6,M,White,110,70,Apparel Mill Co
+M2,Embroidered cap,apparel,7,24,4,0.7,25,2.0,OS,Navy,40,150,Apparel Mill Co
+M2,Embroidered cap,apparel,7,24,4,0.7,25,2.0,OS,Khaki,5,80,Apparel Mill Co
