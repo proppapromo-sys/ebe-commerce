@@ -22,9 +22,13 @@ python -m ebe command         # ONE consolidated action list across every branch
 16 actions today · cash out ≈ $16,752 (reorder + source) · monthly upside ≈ $5,939
 ```
 
-See the cash coming so a restock never blindsides you:
+See the cash coming so a restock never blindsides you — for the store or the venue, with a
+runway check against your capital:
 ```bash
-python -m ebe forecast        # when each reorder fires + 7/30/60/90-day cash windows
+python -m ebe forecast --capital 10000           # store reorders + solvency runway
+python -m ebe venue                              # consumption -> reorder (today)
+python -m ebe forecast --venue --capital 500     # venue SUPPLY cash ahead
+python -m ebe command --capital 5000             # today's list, flagged if it exceeds your cash
 ```
 
 Then record what actually happened so the engine compounds:
@@ -383,7 +387,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Cross-channel arbitrage — CSV price sources today, live eBay Browse API, pluggable PriceSource
 - [x] Compounding edge — journal outcomes become per-category trust; proven lanes auto-sharpen each run
 - [x] `command` daily control-tower (one action list across all branches) + `outcome` recorder to close the loop
-- [x] `forecast` — forward cash-flow: when each reorder fires + 7/30/60/90-day cash windows
+- [x] `forecast` — forward cash-flow (store + venue) with a capital runway/solvency check
 - [x] Project seed (`seed/universal_genome.py`) + worked example (`seed/example_picker.py`)
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue

@@ -302,19 +302,36 @@ def _outcome(args):
 
 
 def _forecast(args):
-    """Forward cash-flow: when each reorder fires and how much cash you'll need."""
+    """Forward cash-flow: when each reorder fires and how much cash you'll need (store or venue)."""
     from . import forecast
-    prods = load_products(args.products) if args.products else sample_live_catalog()
-    rows = forecast.cash_calendar(prods)
+    if args.venue:
+        from .venue.sample import sample_menu, sample_consumables, sample_sales
+        menu, consumables = sample_menu(), sample_consumables()
+        sales = _parse_sales(args.sales) if args.sales else sample_sales()
+        rows = forecast.venue_calendar(sales, menu, consumables, period_days=args.period)
+        title = "CASH FORECAST · VENUE SUPPLIES"
+    else:
+        prods = load_products(args.products) if args.products else sample_live_catalog()
+        rows = forecast.cash_calendar(prods)
+        title = "CASH FORECAST"
     win = forecast.windows(rows)
 
-    print("\n══ EBE COMMAND · CASH FORECAST ══")
+    print("\n══ EBE COMMAND · %s ══" % title)
     print("  cash needed →  next 7d: $%-7.0f  30d: $%-7.0f  60d: $%-7.0f  90d: $%-7.0f"
           % (win[7], win[30], win[60], win[90]))
+    if args.capital is not None:
+        rw = forecast.runway(win, args.capital)
+        parts = []
+        for h in (7, 30, 60, 90):
+            parts.append("%dd %s" % (h, ("OK $%.0f" % rw[h]) if rw[h] >= 0 else "SHORT $%.0f" % (-rw[h])))
+        print("  vs $%.0f capital → %s" % (args.capital, "  ".join(parts)))
+        short = [h for h in (7, 30, 60, 90) if rw[h] < 0]
+        if short:
+            print("  ⚠️  capital runs short by day %d — raise cash, slow a reorder, or trim sourcing." % short[0])
     if not rows:
         print("\n  (nothing projected to reorder — everything well-stocked)")
         return
-    print("\n  when        SKU                          reorder   cash    (cover now)")
+    print("\n  when        item                          reorder   cash    (cover now)")
     for r in rows:
         when = "NOW" if r["days_until"] <= 0 else "in %4.0fd" % r["days_until"]
         print("  %-9s %-28s %5d u  $%-6.0f  %4.0fd" % (when, r["name"][:28], r["qty"], r["cash"], r["cover"]))
@@ -371,9 +388,14 @@ def _command(args):
             print("   %-26s $%.0f test batch" % (it["name"][:26], s))
 
     n = len(t_returns) + len(t_inv) + len(t_price) + len(t_ads) + len(t_source)
+    cash_out = reorder_cash + source_cash
     print("\n  ──────────────────────────────────────────────")
     print("  %d action(s) today · cash out ≈ $%.0f (reorder + source) · monthly upside ≈ $%.0f (reprice + leak fixed)"
-          % (n, reorder_cash + source_cash, uplift + leak))
+          % (n, cash_out, uplift + leak))
+    if args.capital is not None:
+        diff = args.capital - cash_out
+        print("  vs $%.0f capital → %s" % (args.capital,
+              ("headroom $%.0f" % diff) if diff >= 0 else "⚠️ SHORT by $%.0f — trim the list or raise cash" % (-diff)))
 
 
 def _parse_sales(text):
@@ -425,6 +447,9 @@ def main(argv=None):
     # venue supply tracking
     ap.add_argument("--sales", help="venue: POS counts, e.g. 'drink=500,hookah=120,takeout=85' (default: sample)")
     ap.add_argument("--period", type=int, default=30, help="venue: days the sales counts cover (default 30)")
+    # forecast / command
+    ap.add_argument("--venue", action="store_true", help="forecast: project venue SUPPLY cash instead of store inventory")
+    ap.add_argument("--capital", type=float, default=None, help="forecast/command: your available cash, for a runway/solvency check")
     # scout / edges
     ap.add_argument("--profile", help="scout/edges: operator profile (hookah, generic, cautious, aggressive)")
     # arbitrage
