@@ -140,10 +140,32 @@ def _discover(args, fee_model):
     print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
 
 
+def _parse_sales(text):
+    """'drink=500,hookah=120,takeout=85' -> {'drink':500, ...}."""
+    out = {}
+    for part in text.split(","):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        out[k.strip()] = int(float(v.strip()))
+    return out
+
+
+def _venue(args):
+    """EBE Venue OS — POS counts -> supplies consumed -> reorder."""
+    from .venue import engine
+    from .venue.sample import sample_menu, sample_consumables, sample_sales
+    menu, consumables = sample_menu(), sample_consumables()
+    sales = _parse_sales(args.sales) if args.sales else sample_sales()
+    print("\n══ EBE VENUE OS ══")
+    engine.run(sales, menu, consumables, period_days=args.period, place=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Commerce — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover"),
-                    help="which branch to run (or 'check' / 'discover')")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue"),
+                    help="which branch to run (or 'check' / 'discover' / 'venue')")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -164,6 +186,9 @@ def main(argv=None):
     ap.add_argument("--max-sellers", type=int, default=None, dest="max_sellers", help="discover: max competing sellers")
     ap.add_argument("--limit", type=int, default=30, help="discover: how many candidates to pull (default 30)")
     ap.add_argument("--cost-ratio", type=float, default=0.35, dest="cost_ratio", help="discover: assumed landed cost as a fraction of sell price (default 0.35)")
+    # venue (EBE Venue OS)
+    ap.add_argument("--sales", help="venue: POS counts, e.g. 'drink=500,hookah=120,takeout=85' (default: sample)")
+    ap.add_argument("--period", type=int, default=30, help="venue: days the sales counts cover (default 30)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -172,6 +197,8 @@ def main(argv=None):
 
     if args.branch == "check":
         return _check()
+    if args.branch == "venue":
+        return _venue(args)
     if args.branch == "discover":
         from .adapters.base import AdapterError
         try:
