@@ -30,18 +30,24 @@ from .branches import sourcing, pricing, inventory, adspend
 BRANCHES = ("sourcing", "pricing", "inventory", "adspend")
 
 
-def _run(name, fee_model, place, products, campaigns, keepa_products):
+def _run(name, fee_model, place, products, campaigns, keepa_products, ai=False):
     if name == "sourcing" and keepa_products is not None:
         prods, src = keepa_products, "Keepa LIVE"
     elif products is not None or campaigns is not None:
         prods, src = products, "CSV"
     else:
         prods, src = None, "sample data"
+    if name == "sourcing" and ai:
+        src += " · 🧠 AI brain"
     print("\n══ %s ══ (fees: %s · %s)" % (name.upper(), fee_model.name, src))
 
     if name == "sourcing":
         prods = prods if prods is not None else sample_sourcing_catalog()
-        m = sourcing.build(ListFeed(prods), fee_model=fee_model)
+        if ai:
+            from .ai import brain
+            m = brain.build(ListFeed(prods), fee_model=fee_model)
+        else:
+            m = sourcing.build(ListFeed(prods), fee_model=fee_model)
     elif name == "pricing":
         prods = products if products is not None else sample_live_catalog()
         m = pricing.build(ListFeed(prods), fee_model=fee_model)
@@ -79,6 +85,12 @@ def _check():
                 from .adapters.amazon_ads import AdsApiClient
                 AdsApiClient().check()
                 print("  ● %-12s OK · profiles reachable" % name)
+            elif name == "ai":
+                from .ai.client import available
+                if available():
+                    print("  ● %-12s OK · key set + anthropic SDK installed" % name)
+                else:
+                    print("  ◐ %-12s key set, but `pip install anthropic` is missing" % name)
         except Exception as e:
             print("  ✕ %-12s configured but FAILED: %s" % (name, e))
     print("\n(fill .env from .env.example — see SETUP.md)")
@@ -94,6 +106,8 @@ def main(argv=None):
     ap.add_argument("--campaigns", metavar="CSV", help="ad campaigns CSV (see examples/campaigns.csv)")
     ap.add_argument("--asin-costs", metavar="CSV", dest="asin_costs",
                     help="asin,cost CSV -> LIVE sourcing via Keepa (needs KEEPA_API_KEY)")
+    ap.add_argument("--ai", action="store_true",
+                    help="use the Claude AI brain for sourcing (needs ANTHROPIC_API_KEY + anthropic SDK)")
     args = ap.parse_args(argv)
 
     if args.branch == "check":
@@ -111,9 +125,13 @@ def main(argv=None):
         except AdapterError as e:
             raise SystemExit("Keepa live sourcing failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
 
+    from .adapters.base import AdapterError
     names = BRANCHES if args.branch == "all" else (args.branch,)
     for name in names:
-        _run(name, fee_model, args.place, products, campaigns, keepa_products)
+        try:
+            _run(name, fee_model, args.place, products, campaigns, keepa_products, ai=args.ai)
+        except AdapterError as e:
+            raise SystemExit("%s failed: %s\n(run `python -m ebe check`, see SETUP.md)" % (name, e))
 
 
 if __name__ == "__main__":

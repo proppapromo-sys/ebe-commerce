@@ -78,6 +78,36 @@ Live sourcing today (Keepa key + an `asin,cost` sheet of supplier quotes):
 python -m ebe sourcing --asin-costs examples/asin_costs.csv --fees amazon-fba
 ```
 
+### AI brain (Claude, caged by the genome)
+
+The `--ai` flag puts **Claude (`claude-opus-4-8`)** in the BRAIN organ: it estimates a
+product's real demand and *how sure it is*, and `edge = ROI-after-fees × confidence` —
+so an unsure AI can't talk the engine into a buy. Claude's demand read feeds the Heart's
+sizing, but the **caps, the kill-switch and the test-batch stay in plain code**. The Brain
+proposes; the Heart disposes. (See "The vision" below.)
+
+```bash
+pip install anthropic          # optional dependency, only for --ai
+# ANTHROPIC_API_KEY=... in .env
+python -m ebe sourcing --ai --fees amazon-apparel
+```
+
+### The vision: AI *in* the genome, never *driving* it
+
+AI lives inside specific organs and is bounded by the five laws — never given the wheel:
+
+| Organ | AI's job | AI-free? |
+|---|---|---|
+| 👂 Ears | normalize messy supplier data | — |
+| 🧠 Brain | estimate demand / fair value → `mine()` | the edge gate stays code |
+| ❤️ Heart | **none** — sizing, caps, kill-switch | ✅ **by design** |
+| ✋ Hands | listing/ad copy | the action stays confirm-first |
+| 👁️ Eyes | recognize products / trends | a pattern graduates only on proof |
+| 🩸 TruthMeter | **none** — measures real sell-through | ✅ **keeps AI honest** |
+
+Shipped today: the **AI Brain**. Next: AI Eyes (trend/product recognition) and Ears
+(supplier-data normalization), on `claude-haiku-4-5` for cheap high volume.
+
 | Branch | Question it answers | Edge = |
 |---|---|---|
 | `sourcing` | What should I buy in? | ROI after all fees vs break-even |
@@ -166,6 +196,8 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] First-class apparel/merch (variants + apparel economics)
 - [x] CSV import — run every branch on your own catalog / inventory / campaigns
 - [x] Live API adapters — Keepa (sourcing) usable now; Amazon SP-API + Ads auth wired ([SETUP.md](SETUP.md))
+- [x] AI Brain — Claude (`claude-opus-4-8`) estimates demand + confidence, caged by the Heart
+- [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku
 - [ ] Merge live Amazon stock/price with your `sku,cost` sheet for full profit-after-fees
 - [ ] Async Ads reporting (spend/sales) + Shopify & Etsy adapters
 - [ ] `TruthMeter` wired to live sell-through so `Eyes` actually graduate patterns

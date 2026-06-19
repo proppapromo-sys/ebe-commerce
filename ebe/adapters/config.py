@@ -44,4 +44,5 @@ NEEDS = {
     "keepa": ["KEEPA_API_KEY"],
     "amazon": ["SPAPI_REFRESH_TOKEN", "SPAPI_CLIENT_ID", "SPAPI_CLIENT_SECRET"],
     "amazon-ads": ["ADS_REFRESH_TOKEN", "ADS_CLIENT_ID", "ADS_CLIENT_SECRET", "ADS_PROFILE_ID"],
+    "ai": ["ANTHROPIC_API_KEY"],
 }
