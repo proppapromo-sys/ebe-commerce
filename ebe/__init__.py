@@ -10,14 +10,14 @@ One Universal Genome, many branches. Each branch is the SAME loop with different
 Grow new branches by implementing the seven organs in genome.py.
 """
 from .genome import (
-    DataFeed, EdgeModel, Risk, Execution, Eyes, BlindEyes, LearningEyes,
+    DataFeed, EdgeModel, Risk, Portfolio, Execution, Eyes, BlindEyes, LearningEyes,
     TruthMeter, Machine, sane_item,
 )
 from .journal import Journal, pattern_trust
 from . import fees
 
 __all__ = [
-    "DataFeed", "EdgeModel", "Risk", "Execution", "Eyes", "BlindEyes",
+    "DataFeed", "EdgeModel", "Risk", "Portfolio", "Execution", "Eyes", "BlindEyes",
     "LearningEyes", "TruthMeter", "Machine", "sane_item",
     "Journal", "pattern_trust", "fees",
 ]

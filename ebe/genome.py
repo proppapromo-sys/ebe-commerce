@@ -47,15 +47,35 @@ class EdgeModel(ABC):
         return self.mine(item) - self.fair(item)
 
 
+# A shared exposure ledger: one cap on total capital committed across ALL branches/SKUs
+# in a run, so clearing many actions can't quietly tie up more than you'll allow.
+class Portfolio:
+    def __init__(self, cap):
+        self.cap = float(cap)
+        self.committed = 0.0
+
+    @property
+    def free(self):
+        return max(0.0, self.cap - self.committed)
+
+    def can_commit(self, stake):
+        return stake <= self.free + 1e-9
+
+    def commit(self, stake):
+        self.committed += stake
+        return self.committed
+
+
 # ── ❤️ HEART — risk. BUILD THIS ORGAN FIRST. ─────────────────────────────────
 class Risk(ABC):
-    def __init__(self, bankroll, min_edge=0.02, max_per=0.02, daily_stop=0.10):
+    def __init__(self, bankroll, min_edge=0.02, max_per=0.02, daily_stop=0.10, portfolio=None):
         self.bankroll = bankroll
         self.min_edge = min_edge          # the edge gate (your "regime ON")
         self.max_per = max_per            # never risk more than this per action
         self.daily_stop = daily_stop      # halt the day past this loss
         self.day_pnl = 0.0
         self.killed = False               # kill-switch
+        self.portfolio = portfolio        # optional shared exposure cap across branches
 
     @abstractmethod
     def kelly(self, item, edge) -> float:
@@ -74,7 +94,13 @@ class Risk(ABC):
         if edge < self.min_edge:
             return (False, 0.0, "no edge (%.1f%% < %.1f%%)" % (edge * 100, self.min_edge * 100))
         s = self.stake(item, edge)
-        return (True, s, "edge %.1f%% · stake %.2f" % (edge * 100, s)) if s > 0 else (False, 0.0, "size 0")
+        if s <= 0:
+            return (False, 0.0, "size 0")
+        if self.portfolio is not None and not self.portfolio.can_commit(s):   # 💰 global cap
+            return (False, 0.0, "portfolio cap (free $%.0f)" % self.portfolio.free)
+        if self.portfolio is not None:
+            self.portfolio.commit(s)
+        return (True, s, "edge %.1f%% · stake %.2f" % (edge * 100, s))
 
 
 # ── ✋ HANDS — confirm-first execution ────────────────────────────────────────
