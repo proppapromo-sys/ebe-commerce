@@ -113,10 +113,13 @@ class TrueEdge:
     verdict: str           # CORNER | STRONG | TEST | pass
 
 
-def score(it, profile=None, fee_model=AMAZON_FBA) -> TrueEdge:
+def score(it, profile=None, fee_model=AMAZON_FBA, learned=None) -> TrueEdge:
     sig = {k: _clamp(fn(it, profile, fee_model)) for k, fn in SIGNALS.items()}
     w = weights_for(profile)
     composite = sum(w[k] * sig[k] for k in sig)
+    if learned:                                   # 🔁 compounding edge: sharpen proven categories
+        trust = learned.get(it.get("category"), 0.5)
+        composite = _clamp(composite * (0.5 + trust))   # trust 0.5 = neutral; >0.5 boosts, <0.5 damps
     moat = (sig["competition"] + sig["recurrence"] + sig["advantage"]) / 3.0
     if moat >= 0.6 and sig["margin"] >= 0.4:
         verdict = "CORNER"          # defensible AND profitable -> you can own this
@@ -129,7 +132,7 @@ def score(it, profile=None, fee_model=AMAZON_FBA) -> TrueEdge:
     return TrueEdge(it, sig, composite, moat, verdict)
 
 
-def rank(rows, profile=None, fee_model=AMAZON_FBA):
+def rank(rows, profile=None, fee_model=AMAZON_FBA, learned=None):
     """Every opportunity scored across all angles, best true edge first."""
-    return sorted((score(it, profile, fee_model) for it in rows),
+    return sorted((score(it, profile, fee_model, learned) for it in rows),
                   key=lambda e: e.composite, reverse=True)

@@ -152,9 +152,31 @@ def _arbitrage(args):
         asins = [a for a, _, _ in load_asin_costs(args.asin_costs)]
     if not asins:
         raise SystemExit("give ASINs: --asins B0..,B0..  (or --asin-costs file.csv)")
+    client = KeepaClient()
+
+    if args.alt:                                  # cross-channel mode: Amazon (Keepa) vs alt channels
+        from .arbitrage import cross_channel
+        from .adapters.prices import load_alt_sources, DictPriceSource
+        amazon = {}
+        for kp in client.fetch(asins):
+            amazon[kp.get("asin")] = keepa_price_points(kp).get("current")
+        sources = [DictPriceSource("amazon", amazon)] + load_alt_sources(args.alt)
+        print("\n══ EBE COMMAND · CROSS-CHANNEL ARBITRAGE ══ (channels: %s)"
+              % ", ".join(s.name for s in sources))
+        print("\n  identifier   buy @          sell @         gap   edge")
+        hits = 0
+        for asin in asins:
+            r = cross_channel(asin, sources)
+            if not r:
+                continue
+            hits += 1
+            gap = (r["sell"] - r["buy"]) / r["sell"] if r["sell"] else 0
+            print("  %-11s %-8s $%-6.2f %-8s $%-6.2f %3.0f%%  %3.0f%%"
+                  % (asin, r["buy_channel"], r["buy"], r["sell_channel"], r["sell"], gap * 100, r["edge"] * 100))
+        print("\n  %d cross-channel gap(s) found." % hits)
+        return
 
     print("\n══ EBE COMMAND · LIVE ARBITRAGE ══ (Keepa · buy-low vs 90-day norm)")
-    client = KeepaClient()
     rows = []
     for kp in client.fetch(asins):
         sig = arb.signal(keepa_price_points(kp))
@@ -196,12 +218,22 @@ def _edges(args):
     else:
         rows = scout.sample_market()
 
-    print("\n══ EBE COMMAND · TRUE EDGE ══ (profile: %s · %s · %s)"
-          % (prof.name, fee_model.name, "Keepa LIVE" if live else "sample"))
+    journal, learned = None, None
+    if args.journal:                              # 🔁 compounding: read proven-category trust, record this run
+        from .journal import Journal, category_trust
+        journal = Journal(args.journal)
+        learned = category_trust(journal.read())
+
+    print("\n══ EBE COMMAND · TRUE EDGE ══ (profile: %s · %s · %s%s)"
+          % (prof.name, fee_model.name, "Keepa LIVE" if live else "sample",
+             " · 🔁 learned" if learned else ""))
     w = edgemod.weights_for(prof)
     print("  angle weights: " + " ".join("%s %.0f%%" % (k, v * 100) for k, v in w.items()))
+    if learned:
+        print("  proven categories: " + ", ".join("%s %.0f%%" % (c, t * 100)
+              for c, t in sorted(learned.items(), key=lambda kv: -kv[1])))
     print("\n  product                       mrg dmd cmp adv rec tim arb | EDGE moat  verdict")
-    ranked = edgemod.rank(rows, prof, fee_model)
+    ranked = edgemod.rank(rows, prof, fee_model, learned=learned)
     for e in ranked:
         s = e.signals
         bars = " ".join("%3.0f" % (s[k] * 100) for k in
@@ -213,6 +245,12 @@ def _edges(args):
           % (len(corner), "y" if len(corner) == 1 else "ies"))
     for e in corner:
         print("    🏰 %-26s edge %.0f%% · moat %.0f%%" % (e.item["name"][:26], e.composite * 100, e.moat * 100))
+    if journal is not None:                       # record this run so outcomes can compound it later
+        for e in ranked:
+            if e.verdict in ("CORNER", "STRONG"):
+                journal.record_decision("edges", e.item, 0.0, e.composite, [e.verdict])
+        print("\n  recorded %d decision(s) to %s — mark outcomes (journal.record_outcome) to sharpen next run."
+              % (sum(1 for e in ranked if e.verdict in ("CORNER", "STRONG")), args.journal))
     print("\n  angles: mrg=margin dmd=demand cmp=open-lane adv=your-advantage rec=recurring tim=trend arb=arbitrage")
 
 
@@ -295,7 +333,8 @@ def main(argv=None):
     # scout / edges
     ap.add_argument("--profile", help="scout/edges: operator profile (hookah, generic, cautious, aggressive)")
     # arbitrage
-    ap.add_argument("--asins", help="arbitrage: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
+    ap.add_argument("--asins", help="arbitrage/edges: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
+    ap.add_argument("--alt", metavar="CSV", help="arbitrage: cross-channel prices CSV (channel,identifier,price)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:

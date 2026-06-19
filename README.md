@@ -260,6 +260,25 @@ python -m ebe arbitrage --asins "B08VRZTHDL,B0BTD83JZR,B09XDTKZ8J"
   B0BTD83JZR  Karat clamshell   $38.10 $45.14 $37.20  16%   30%   72%  BUY THE DIP
 ```
 
+**Cross-channel** (Amazon vs Walmart / eBay / Shopify) — drop competitor prices in a CSV
+(`channel,identifier,price`) and it finds the buy-low/sell-high gap; live eBay via the
+Browse API (`EBAY_OAUTH_TOKEN`) or any channel by subclassing `PriceSource`:
+
+```bash
+python -m ebe arbitrage --asins "B08VRZTHDL,B0BTD83JZR" --alt examples/alt_prices.csv
+```
+
+### Compounding edge — the system sharpens itself
+
+Point `edges` at a journal and it learns: outcomes you record become **per-category trust**, and
+proven lanes get boosted next run while losers get damped — *even if their raw margin looks great*.
+Your record becomes an edge competitors don't have.
+
+```bash
+python -m ebe edges --asins "B0..,B0.." --profile hookah --journal record.jsonl
+# proven categories: hookah 79%, kitchen 21%  → hookah lanes rise, kitchen sinks despite high margin
+```
+
 ## Venue supply tracking — the same genome, pointed at your own venue
 
 Another lane: run the engine on your *own* consumption. It takes your POS counts (drinks /
@@ -326,6 +345,8 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] `edges` — fuse 7 edge angles into a true-edge score; flag defensible, cornerable lanes
 - [x] `arbitrage` — live temporal buy-the-dip (Keepa); cross-channel via pluggable PriceSource
 - [x] Live `edges` — the true-edge engine on real ASINs: live arbitrage + live rank-momentum timing fused in
+- [x] Cross-channel arbitrage — CSV price sources today, live eBay Browse API, pluggable PriceSource
+- [x] Compounding edge — journal outcomes become per-category trust; proven lanes auto-sharpen each run
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku

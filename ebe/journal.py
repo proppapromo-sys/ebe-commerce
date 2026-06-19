@@ -31,8 +31,8 @@ class Journal:
     def record_decision(self, branch, item, stake, edge, patterns=None) -> dict:
         return self.append({
             "kind": "decision", "branch": branch, "id": item.get("id"),
-            "name": item.get("name"), "stake": stake, "edge": edge,
-            "patterns": list(patterns or []),
+            "name": item.get("name"), "category": item.get("category"),
+            "stake": stake, "edge": edge, "patterns": list(patterns or []),
         })
 
     def record_outcome(self, branch, item_id, score, patterns=None) -> dict:
@@ -80,3 +80,22 @@ def pattern_trust(records, prior=0.5, prior_weight=10.0) -> dict:
 
     return {pat: (wins[pat] + prior * prior_weight) / (n + prior_weight)
             for pat, n in total.items()}
+
+
+def category_trust(records, prior=0.5, prior_weight=6.0) -> dict:
+    """Win-rate per CATEGORY from scored outcomes (the compounding edge): categories that
+    keep paying off climb above 0.5, ones that keep losing sink below. Feed to edges.score(
+    learned=...) so proven lanes sharpen and duds get damped every cycle."""
+    cat_by_id = {r.get("id"): r.get("category") for r in records if r.get("kind") == "decision"}
+    wins, total = {}, {}
+    for r in records:
+        if r.get("kind") != "outcome":
+            continue
+        cat = r.get("category") or cat_by_id.get(r.get("id"))
+        if not cat:
+            continue
+        win = 1.0 if (r.get("score") or 0) > 0 else 0.0
+        wins[cat] = wins.get(cat, 0.0) + win
+        total[cat] = total.get(cat, 0) + 1
+    return {cat: (wins[cat] + prior * prior_weight) / (n + prior_weight)
+            for cat, n in total.items()}
