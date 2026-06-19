@@ -63,7 +63,10 @@ def timing_edge(it):
 
 
 def arbitrage_edge(it):
-    """A price gap to another channel you can buy-low/sell-high (neutral if unknown)."""
+    """Buy-low/sell-high room. Uses a live arbitrage score if one was attached, else a
+    cross-channel price gap, else neutral when unknown."""
+    if "arb_edge" in it:                       # live temporal/cross-channel score (see ebe.arbitrage)
+        return _clamp(it["arb_edge"])
     alt = it.get("alt_price")
     if alt and it.get("sell"):
         return _clamp(((it["sell"] - alt) / it["sell"]) / 0.30)   # 30% gap = full edge

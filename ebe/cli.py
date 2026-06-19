@@ -140,6 +140,38 @@ def _discover(args, fee_model):
     print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
 
 
+def _arbitrage(args):
+    """LIVE temporal arbitrage via Keepa: which ASINs are cheap vs their own 90-day norm."""
+    from .adapters.keepa import KeepaClient, keepa_price_points
+    from . import arbitrage as arb
+    asins = []
+    if args.asins:
+        asins = [a.strip() for a in args.asins.split(",") if a.strip()]
+    elif args.asin_costs:
+        from .adapters.keepa import load_asin_costs
+        asins = [a for a, _, _ in load_asin_costs(args.asin_costs)]
+    if not asins:
+        raise SystemExit("give ASINs: --asins B0..,B0..  (or --asin-costs file.csv)")
+
+    print("\n══ EBE COMMAND · LIVE ARBITRAGE ══ (Keepa · buy-low vs 90-day norm)")
+    client = KeepaClient()
+    rows = []
+    for kp in client.fetch(asins):
+        sig = arb.signal(keepa_price_points(kp))
+        if sig:
+            rows.append((kp.get("asin", "?"), (kp.get("title") or "")[:30], sig))
+    rows.sort(key=lambda r: r[2].edge, reverse=True)
+
+    print("\n  ASIN        product                          now    avg    low   dip  spread  edge  signal")
+    for asin, title, s in rows:
+        print("  %-11s %-30s $%-5.2f $%-5.2f $%-5.2f %3.0f%%  %4.0f%%  %3.0f%%  %s"
+              % (asin, title, s.current, s.avg or 0, s.low or 0, s.dip * 100,
+                 s.spread * 100, s.edge * 100, s.verdict))
+    buys = [r for r in rows if r[2].verdict == "BUY THE DIP"]
+    print("\n  %d at a buy-the-dip price right now." % len(buys))
+    print("  (temporal arbitrage on live Amazon data; cross-channel adds a 2nd PriceSource — see ebe/arbitrage.py)")
+
+
 def _edges(args):
     """Score a market across ALL edge angles and rank by true (defensible) edge."""
     from .profile import PROFILES
@@ -221,8 +253,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout", "edges"),
-                    help="which branch to run (or 'check' / 'discover' / 'venue' / 'scout' / 'edges')")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "check", "discover", "venue", "scout", "edges", "arbitrage"),
+                    help="which branch to run (or check / discover / venue / scout / edges / arbitrage)")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -246,8 +278,10 @@ def main(argv=None):
     # venue supply tracking
     ap.add_argument("--sales", help="venue: POS counts, e.g. 'drink=500,hookah=120,takeout=85' (default: sample)")
     ap.add_argument("--period", type=int, default=30, help="venue: days the sales counts cover (default 30)")
-    # scout
-    ap.add_argument("--profile", help="scout: operator profile (hookah, generic, cautious, aggressive)")
+    # scout / edges
+    ap.add_argument("--profile", help="scout/edges: operator profile (hookah, generic, cautious, aggressive)")
+    # arbitrage
+    ap.add_argument("--asins", help="arbitrage: ASINs to check, e.g. 'B08VRZTHDL,B0BTD83JZR'")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -262,6 +296,12 @@ def main(argv=None):
         return _scout(args)
     if args.branch == "edges":
         return _edges(args)
+    if args.branch == "arbitrage":
+        from .adapters.base import AdapterError
+        try:
+            return _arbitrage(args)
+        except AdapterError as e:
+            raise SystemExit("arbitrage failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
     if args.branch == "discover":
         from .adapters.base import AdapterError
         try:

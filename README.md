@@ -237,6 +237,21 @@ python -m ebe edges --profile hookah
 
 High margin with a thin moat is a treadmill; the engine steers you to the lanes you can own.
 
+### Live arbitrage — buy low, sell high (real Keepa data)
+
+`arbitrage` reads each ASIN's price against its own **90-day average and low** and flags what's
+trading cheap *right now* — the moment to source/stock before the recovery. Temporal arbitrage
+runs live today on your Keepa key; cross-channel (Amazon vs Walmart/eBay/Shopify) snaps in by
+adding a `PriceSource` (`ebe/arbitrage.py`). The score feeds the `arb` angle of the true-edge engine.
+
+```bash
+python -m ebe arbitrage --asins "B08VRZTHDL,B0BTD83JZR,B09XDTKZ8J"
+```
+```
+  ASIN        product            now    avg    low   dip  spread  edge  signal
+  B0BTD83JZR  Karat clamshell   $38.10 $45.14 $37.20  16%   30%   72%  BUY THE DIP
+```
+
 ## Venue supply tracking — the same genome, pointed at your own venue
 
 Another lane: run the engine on your *own* consumption. It takes your POS counts (drinks /
@@ -281,6 +296,7 @@ ebe/
   venue/               # venue supply tracking — POS counts -> BOM -> supplies consumed -> reorder
   profile.py           # operator profiles — personalise every branch to who you are
   edges.py             # true edge — fuse 7 edge angles, flag what's CORNERABLE
+  arbitrage.py         # buy-low/sell-high: temporal (Keepa) now, cross-channel pluggable
   branches/scout.py    # read a market through your profile (landscape + ranked opportunities)
   journal.py           # the record: decisions + outcomes (learning loop)
   cli.py / __main__.py # python -m ebe <branch>
@@ -299,6 +315,7 @@ tests/                 # unittest suite (python -m unittest discover -s tests)
 - [x] Genome v2 — closed learning loop (journal + LearningEyes), sanity gate, portfolio cap, retry/budget guards
 - [x] Profiles + `scout` — personalised market landscape + ranked opportunities per operator
 - [x] `edges` — fuse 7 edge angles into a true-edge score; flag defensible, cornerable lanes
+- [x] `arbitrage` — live temporal buy-the-dip (Keepa); cross-channel via pluggable PriceSource
 - [x] **Venue supply tracking (Phase 1)** — POS counts → bill-of-materials → supplies consumed → auto-reorder
 - [ ] Phase 2+ — waste/shrinkage detection (BOM-expected vs counted), supply sales, AI forecasting, multi-venue
 - [ ] AI Eyes (trend/product recognition) + AI Ears (supplier-data normalization) on Haiku

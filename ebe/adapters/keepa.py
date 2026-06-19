@@ -53,13 +53,14 @@ class KeepaClient:
         data = request_json("GET", "https://api.keepa.com/token", params={"key": self.key})
         return data.get("tokensLeft", data)
 
-    def fetch(self, asins):
-        """Fetch raw Keepa product objects for up to ~100 ASINs per call."""
+    def fetch(self, asins, stats_days=90):
+        """Fetch raw Keepa product objects for up to ~100 ASINs per call.
+        stats_days asks Keepa for current/avg/min/max over that window (powers arbitrage)."""
         if not asins:
             return []
         data = request_json("GET", "https://api.keepa.com/product", params={
             "key": self.key, "domain": self.domain,
-            "asin": ",".join(asins), "stats": 1, "buybox": 1,
+            "asin": ",".join(asins), "stats": int(stats_days), "buybox": 1,
         })
         return data.get("products", []) or []
 
@@ -91,6 +92,42 @@ def keepa_sell_price(kp):
 def keepa_monthly_sales(kp):
     """Real units/month Keepa observed (0 if Keepa has no estimate)."""
     return float(kp.get("monthlySold") or 0)
+
+
+# Keepa price-type indices: 18 = Buy Box, 1 = New (3rd-party), 0 = Amazon. We try in that order.
+_PRICE_TYPES = (18, 1, 0)
+
+
+def _price_of(v):
+    """A Keepa stat cell is either a cents value or a [timestamp, cents] pair."""
+    if isinstance(v, list) and v:
+        v = v[-1]
+    return _cents(v) if isinstance(v, (int, float)) else None
+
+
+def _stat_arr(stats, key):
+    arr = stats.get(key)
+    if not isinstance(arr, list):
+        return None
+    for idx in _PRICE_TYPES:
+        if len(arr) > idx:
+            p = _price_of(arr[idx])
+            if p:
+                return p
+    return None
+
+
+def keepa_price_points(kp):
+    """{current, avg, min, max} sell price in dollars over Keepa's stats window.
+    Defensive across Keepa's flat-array (avg) vs [ts,price]-pair (min/max) shapes."""
+    st = kp.get("stats") or {}
+    pts = {
+        "current": _stat_arr(st, "current") or _cents(st.get("buyBoxPrice")) or keepa_sell_price(kp),
+        "avg": _stat_arr(st, "avg") or _stat_arr(st, "avg90") or _stat_arr(st, "avg30"),
+        "min": _stat_arr(st, "min"),
+        "max": _stat_arr(st, "max"),
+    }
+    return pts
 
 
 def keepa_competition(kp):
