@@ -49,8 +49,12 @@ AMAZON_FBA = FeeModel("amazon-fba", referral_pct=0.15, ad_pct=0.15, return_rate=
 MERCH_APPAREL = FeeModel("amazon-apparel", referral_pct=0.17, ad_pct=0.15, return_rate=0.20, fulfilment=5.0)
 SHOPIFY = FeeModel("shopify", referral_pct=0.029, ad_pct=0.20, return_rate=0.08, fulfilment=4.5)
 ETSY = FeeModel("etsy", referral_pct=0.065, ad_pct=0.12, return_rate=0.05, fulfilment=3.5)
+# LOCAL B2B / your-own-venue: no marketplace cut, no ads, near-zero returns, modest
+# self-delivery handling. This is where bulky low-value supplies (boxes, cups, foil)
+# actually make money — sell to nearby venues and deliver them yourself.
+LOCAL = FeeModel("local", referral_pct=0.0, ad_pct=0.0, return_rate=0.02, fulfilment=0.75)
 
-PRESETS = {m.name: m for m in (AMAZON_FBA, MERCH_APPAREL, SHOPIFY, ETSY)}
+PRESETS = {m.name: m for m in (AMAZON_FBA, MERCH_APPAREL, SHOPIFY, ETSY, LOCAL)}
 
 
 if __name__ == "__main__":
