@@ -11,6 +11,22 @@ matters most today. Shared by the CLI (`python -m ebe brief`) and the dashboard 
 from __future__ import annotations
 
 
+def live_cash():
+    """Real revenue + available balance from Stripe — None if not configured/reachable."""
+    try:
+        from .adapters import config
+        if config.require(config.INTEGRATIONS["stripe"]["keys"]):
+            return None
+        from .adapters.stripe import StripeClient
+        c = StripeClient()
+        bal = c.balance()
+        rev = c.revenue(30)
+        return {"available": bal["available"], "pending": bal["pending"],
+                "revenue30": rev["revenue"], "charges30": rev["charges"]}
+    except Exception:
+        return None
+
+
 def compose(store, profile="generic", fee=None) -> dict:
     from . import autobuy
     from .purchasing import orders_by_supplier
@@ -54,7 +70,7 @@ def compose(store, profile="generic", fee=None) -> dict:
     return dict(products=len(products), low=len(proposals), proposals=proposals, top=top,
                 cash_to_commit=cash_to_commit, drafts=len(drafts), draft_value=draft_value,
                 send_groups=len(send_groups), ordered=len(ordered), inbound_value=inbound_value,
-                inv_value=inv_value, watch=watch, move=move)
+                inv_value=inv_value, watch=watch, move=move, cash=live_cash())
 
 
 def render_text(b, date_str="") -> str:
@@ -72,6 +88,10 @@ def render_text(b, date_str="") -> str:
     L.append("📝 TO SEND   %d supplier order(s) drafted · $%.0f   → python -m ebe po"
              % (b["send_groups"], b["draft_value"]))
     L.append("📥 INBOUND   %d PO(s) in transit · $%.0f" % (b["ordered"], b["inbound_value"]))
+    if b.get("cash"):
+        c = b["cash"]
+        L.append("💰 CASH (Stripe)  $%.0f available · $%.0f revenue/30d (%d charge%s)"
+                 % (c["available"], c["revenue30"], c["charges30"], "" if c["charges30"] == 1 else "s"))
     for e in b["watch"]:
         L.append("🧭 WATCH     %s — %s (edge %.0f%%, moat %.0f%%)"
                  % (e.item["name"][:28], e.verdict, e.composite * 100, e.moat * 100))

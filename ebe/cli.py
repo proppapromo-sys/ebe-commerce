@@ -125,6 +125,10 @@ def _check():
                 from .adapters.square import SquareClient
                 SquareClient().check()
                 print("  ● %-12s OK · locations reachable" % name)
+            elif name == "stripe":
+                from .adapters.stripe import StripeClient
+                bal = StripeClient().balance()
+                print("  ● %-12s OK · $%.0f available" % (name, bal["available"]))
             else:
                 print("  ● %-12s configured" % name)
         except Exception as e:

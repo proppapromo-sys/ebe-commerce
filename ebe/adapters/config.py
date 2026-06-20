@@ -78,8 +78,8 @@ INTEGRATIONS = {
                     "signup": "https://www.printful.com", "status": "planned",
                     "role": "Auto-fulfil own-brand apparel — no inventory risk"},
     "stripe":      {"label": "Stripe (payments)", "keys": ["STRIPE_SECRET_KEY"],
-                    "signup": "https://stripe.com", "status": "planned",
-                    "role": "Direct payments + true cash-in for the forecast"},
+                    "signup": "https://stripe.com", "status": "live",
+                    "role": "Real revenue + available balance → the brief & cash forecast"},
 }
 
 # Which env vars each LIVE integration needs (derived; the doctor validates these):

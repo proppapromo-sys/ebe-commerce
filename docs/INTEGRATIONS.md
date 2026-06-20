@@ -15,6 +15,7 @@ Put keys in `$HOME\ebe-commerce\.env` (never commit it), then `python -m ebe che
 | **Amazon Ads** | Campaign spend/sales → scale winners, cut bleeders | advertising.amazon.com | `ADS_REFRESH_TOKEN` `ADS_CLIENT_ID` `ADS_CLIENT_SECRET` `ADS_PROFILE_ID` |
 | **Shopify** | Your own-brand DTC store — stock & price sync | shopify.com | `SHOPIFY_STORE` `SHOPIFY_TOKEN` |
 | **Square** | Venue POS — real sales → consumption → auto-reorder | squareup.com/pos | `SQUARE_TOKEN` `SQUARE_LOCATION_ID` |
+| **Stripe** ✅ *you're set up* | Real revenue + available balance → the brief & cash forecast | stripe.com | `STRIPE_SECRET_KEY` |
 
 Usage once keyed:
 ```
@@ -34,7 +35,6 @@ python -m ebe check                      # validate every live key
 | **Walmart Marketplace** | High-volume third channel once Amazon hums | marketplace.walmart.com |
 | **TikTok Shop** | Social-commerce for the brand play | seller-us.tiktok.com |
 | **Printful** | Print-on-demand — auto-fulfil own-brand apparel, zero inventory risk | printful.com |
-| **Stripe** | Direct payments + true cash-in for the forecast | stripe.com |
 
 ---
 
