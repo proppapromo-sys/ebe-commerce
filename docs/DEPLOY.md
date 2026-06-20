@@ -42,6 +42,31 @@ python -m ebe tenant --issue cloud9 --id THEIR_PASSWORD --days 30
 
 ---
 
+## Hands-off billing + self-serve signup (Stripe)
+
+Make EBE sell itself: venues sign up at `/signup`, pay via Stripe, and get activated
+automatically. Renewals auto-extend; failed payments auto-suspend. No manual `tenant --issue`.
+
+1. **In Stripe:** create a subscription **Product** (e.g. "EBE · $99/mo") → make a
+   **Payment Link** for it. Copy the link URL.
+2. **In Stripe → Developers → Webhooks:** add an endpoint
+   `https://ebe.ebehq.com/webhook/stripe`, subscribe to:
+   `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
+   `customer.subscription.deleted`. Copy the signing secret (`whsec_…`).
+3. **Set these env vars** (in the systemd unit, or your PowerShell session):
+   ```
+   EBE_CHECKOUT_URL=https://buy.stripe.com/your_payment_link
+   EBE_STRIPE_WEBHOOK_SECRET=whsec_xxx
+   EBE_TRIAL_DAYS=0          # or e.g. 14 for a free trial before payment
+   ```
+4. Done. Flow: venue → `/signup` → Stripe checkout → pays → webhook activates them →
+   monthly invoice auto-renews → missed payment auto-suspends (locked server-side).
+
+> The Payment Link carries `client_reference_id` = the tenant's login ID, so the webhook
+> knows exactly who paid. Test it with Stripe's test mode + the webhook "Send test event".
+
+---
+
 ## Always-on path: a $5/mo VPS
 
 (Use this when you don't want EBE tied to your PC being on. You can still front it with the

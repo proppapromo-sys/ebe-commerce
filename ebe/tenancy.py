@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     status   TEXT NOT NULL DEFAULT 'active',   -- active | suspended
     expires  REAL NOT NULL DEFAULT 0,
     db_path  TEXT NOT NULL,
+    stripe_customer TEXT,
     created  REAL NOT NULL DEFAULT 0
 );
 """
@@ -53,6 +54,9 @@ class Tenants:
         self._cx = sqlite3.connect(path)
         self._cx.row_factory = sqlite3.Row
         self._cx.executescript(_SCHEMA)
+        have = {r["name"] for r in self._cx.execute("PRAGMA table_info(tenants)")}
+        if "stripe_customer" not in have:                # migrate older control DBs
+            self._cx.execute("ALTER TABLE tenants ADD COLUMN stripe_customer TEXT")
         self._cx.commit()
 
     def close(self):
@@ -108,9 +112,22 @@ class Tenants:
         self._cx.execute("UPDATE tenants SET status='active' WHERE id=?", (tid.lower(),))
         self._cx.commit()
 
+    def link_stripe(self, tid, customer_id):
+        self._cx.execute("UPDATE tenants SET stripe_customer=? WHERE id=?", (customer_id, tid.lower()))
+        self._cx.commit()
+
     def tenant(self, tid):
         row = self._cx.execute("SELECT * FROM tenants WHERE id=?", (tid.strip().lower(),)).fetchone()
         return dict(row) if row else None
+
+    def tenant_by_stripe(self, customer_id):
+        if not customer_id:
+            return None
+        row = self._cx.execute("SELECT * FROM tenants WHERE stripe_customer=?", (customer_id,)).fetchone()
+        return dict(row) if row else None
+
+    def exists(self, tid):
+        return self.tenant(tid) is not None
 
     def list_tenants(self):
         return [dict(r) for r in self._cx.execute("SELECT * FROM tenants ORDER BY id").fetchall()]

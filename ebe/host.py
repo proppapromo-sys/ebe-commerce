@@ -24,6 +24,8 @@ from . import dashboard, tenancy
 
 SECRET = (os.environ.get("EBE_HOST_SECRET") or "ebe-dev-secret-change-me").encode()
 OWNER_PW = os.environ.get("EBE_OWNER_PASSWORD")
+CHECKOUT_URL = os.environ.get("EBE_CHECKOUT_URL", "")     # your Stripe Payment Link
+TRIAL_DAYS = int(os.environ.get("EBE_TRIAL_DAYS", "0"))   # >0 = free trial before payment
 
 
 def _sign(value):
@@ -56,6 +58,20 @@ def _page(title, inner):
             "<style>%s</style><main class=wrap>%s</main>" % (title, dashboard._CSS, inner))
 
 
+def _signup_page(msg=""):
+    note = "<div class='card warn'>%s</div>" % dashboard._esc(msg) if msg else ""
+    trial = " · %d-day free trial" % TRIAL_DAYS if TRIAL_DAYS else ""
+    return _page("EBE · Start your venue",
+                 "<h2>Start your venue on EBE%s</h2>%s"
+                 "<form class=card method=post action='/signup'>"
+                 "<label>Venue name</label><input name=name placeholder='Cloud9 Lounge' autofocus><br><br>"
+                 "<label>Choose a login ID</label><input name=id placeholder='cloud9'><br><br>"
+                 "<label>Email</label><input name=email type=email><br><br>"
+                 "<label>Password</label><input name=pw type=password><br><br>"
+                 "<button>Create account → checkout</button></form>"
+                 "<div class=sub>Already have an account? <a href='/login'>Sign in</a></div>" % (trial, note))
+
+
 def _login_page(msg=""):
     note = "<div class='card warn'>%s</div>" % dashboard._esc(msg) if msg else ""
     return _page("EBE · Sign in",
@@ -67,11 +83,16 @@ def _login_page(msg=""):
 
 
 def _locked_page(tn, tid):
+    pay = ""
+    if CHECKOUT_URL:
+        sep = "&" if "?" in CHECKOUT_URL else "?"
+        pay = "<a class='btn' href='%s%sclient_reference_id=%s'>Renew subscription</a> " % (
+            CHECKOUT_URL, sep, urllib.parse.quote(tid))
     return _page("EBE · Subscription required",
                  "<h2>⛔ Subscription inactive</h2><div class='card warn'>"
-                 "Your EBE subscription is <b>%s</b>. Contact your provider to renew.</div>"
-                 "<div class=card><a href='/logout'>sign out</a></div>"
-                 % dashboard._esc(tn.status_line(tid)))
+                 "Your EBE subscription is <b>%s</b>. Renew to continue.</div>"
+                 "<div class=card>%s<a href='/logout'>sign out</a></div>"
+                 % (dashboard._esc(tn.status_line(tid)), pay))
 
 
 def serve(args):
@@ -110,8 +131,37 @@ def serve(args):
         def do_POST(self):
             path, _, _q = self.path.partition("?")
             length = int(self.headers.get("Content-Length") or 0)
-            form = urllib.parse.parse_qs(self.rfile.read(length).decode("utf-8"))
+            raw = self.rfile.read(length)
+            if path == "/webhook/stripe":                  # Stripe calls this — verify + apply
+                from . import billing
+                sig = self.headers.get("Stripe-Signature", "")
+                if billing.WEBHOOK_SECRET and not billing.verify_signature(raw, sig, billing.WEBHOOK_SECRET):
+                    self._send("bad signature", 400); return
+                event = billing.parse(raw)
+                if event is None:
+                    self._send("bad payload", 400); return
+                try:
+                    billing.handle_event(self.tn, event)
+                except Exception:
+                    pass
+                self._send("ok"); return
+            form = urllib.parse.parse_qs(raw.decode("utf-8"))
             g = lambda k: (form.get(k) or [""])[0]
+            if path == "/signup":
+                tid = g("id").strip().lower()
+                if not tid or not g("pw") or not g("name"):
+                    self._send(_signup_page("Fill in venue, ID, and password.")); return
+                if self.tn.exists(tid):
+                    self._send(_signup_page("That login ID is taken — pick another.")); return
+                self.tn.create_tenant(tid, g("name"), g("pw"), days=TRIAL_DAYS, plan="pro")
+                if TRIAL_DAYS <= 0:
+                    self.tn.suspend(tid)                   # no trial → locked until they pay
+                if CHECKOUT_URL:
+                    sep = "&" if "?" in CHECKOUT_URL else "?"
+                    url = "%s%sclient_reference_id=%s&prefilled_email=%s" % (
+                        CHECKOUT_URL, sep, urllib.parse.quote(tid), urllib.parse.quote(g("email")))
+                    self._redirect(url); return
+                self._redirect("/login"); return
             if path == "/login":
                 tid = g("id").strip().lower()
                 if self.tn.authenticate(tid, g("pw")):
@@ -147,6 +197,8 @@ def serve(args):
                 self._send("ok"); return
             if path == "/login":
                 self._send(_login_page()); return
+            if path == "/signup":
+                self._send(_signup_page()); return
             if path == "/logout":
                 self._redirect("/login", "ebe_sess=; Path=/; Max-Age=0"); return
             if path == "/admin" or path == "/admin/login":
