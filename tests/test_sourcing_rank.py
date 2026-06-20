@@ -41,6 +41,24 @@ class SourcingRankTests(unittest.TestCase):
         self.assertEqual(summ["count"], 3)
         self.assertGreaterEqual(summ["winners"], 1)
 
+    def test_write_then_load_roundtrips_discover_items(self):
+        from ebe.sourcing_rank import write_candidates
+        items = [{"id": "B01", "name": "Coco charcoal", "category": "hookah",
+                  "cost": 3.0, "sell": 15.49, "monthly_sales": 1000, "competition": 0.5}]
+        fd, p = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        try:
+            n = write_candidates(p, items)
+            self.assertEqual(n, 1)
+            back = load_candidates(p)
+            self.assertEqual(back[0]["name"], "Coco charcoal")
+            self.assertEqual(back[0]["sell"], 15.49)
+            self.assertEqual(back[0]["monthly_sales"], 1000)
+            # and it ranks straight away
+            self.assertEqual(rank_candidates(back, PROFILES["hookah"], SHOPIFY)[0]["verdict"], "CORNER")
+        finally:
+            os.remove(p)
+
     def test_load_candidates_reads_csv(self):
         fd, p = tempfile.mkstemp(suffix=".csv")
         os.close(fd)

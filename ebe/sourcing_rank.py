@@ -14,6 +14,26 @@ import csv
 from .edges import score
 
 
+CANDIDATE_COLS = ("name", "category", "cost", "sell", "monthly_sales", "competition")
+
+
+def write_candidates(path, items, category=None) -> int:
+    """Write item dicts (e.g. Keepa discover results) to a candidates CSV for `rank`."""
+    n = 0
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(CANDIDATE_COLS)
+        for it in items:
+            name = (it.get("name") or it.get("id") or "").strip()
+            if not name:
+                continue
+            w.writerow([name, it.get("category") or category or "?",
+                        round(it.get("cost") or 0, 2), round(it.get("sell") or 0, 2),
+                        int(it.get("monthly_sales") or 0), round(it.get("competition") or 0.5, 2)])
+            n += 1
+    return n
+
+
 def load_candidates(path) -> list:
     """Read a candidates CSV: name,category,cost,sell[,monthly_sales,competition,supplier]."""
     out = []

@@ -169,9 +169,14 @@ def _discover(args, fee_model):
                  roi * 100, "✅" if ok else "— ", it["name"][:38]))
     cleared = sum(1 for _, _, ok in rows if ok)
     print("\n  %d candidate(s), %d clear the gate at the assumed cost." % (len(rows), cleared))
+    if getattr(args, "out", None):
+        from .sourcing_rank import write_candidates
+        n = write_candidates(args.out, [it for it, _, _ in rows], category=args.category)
+        print("  📝 wrote %d candidate(s) → %s   (now: python -m ebe rank --file %s --profile hookah)"
+              % (n, args.out, args.out))
     print("  * ROI assumes landed cost = %d%% of sell price — get REAL supplier quotes for the ✅ ones,"
           % int(args.cost_ratio * 100))
-    print("    put them in an asin,cost CSV, and re-run `python -m ebe sourcing --asin-costs ...`.")
+    print("    drop them into the candidates CSV and re-run `python -m ebe rank`.")
 
 
 def _arbitrage(args):
