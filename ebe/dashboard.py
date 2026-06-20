@@ -25,7 +25,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 NAV = [("/brief", "Brief", "brief"), ("/act", "Act", "act"), ("/", "Today", "today"),
-       ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"),
+       ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
 _CSS = """
@@ -742,6 +742,64 @@ def render_sheet(args):
     return _shell(_ctx_from_args(args), "rebuy", "".join(inner))
 
 
+# ── SOURCE page (rank candidate products before you buy) ─────────────────────
+_SAMPLE_CANDIDATES = ("Private-label coconut charcoal 1kg,hookah,3.20,14.99,420,0.35\n"
+                      "Disposable hookah mouth tips 100pk,hookah,1.80,9.99,650,0.30\n"
+                      "Branded to-go boxes 50pk,supply,4.50,12.99,500,0.55\n"
+                      "Embroidered dad cap,apparel,7.00,24.00,140,0.65\n"
+                      "LED bar coaster (light-up),home,2.40,11.99,200,0.80")
+
+
+def _parse_candidates(text):
+    import csv as _csv
+    import io as _io
+    from .sourcing_rank import _norm
+    rows = []
+    reader = _csv.reader(_io.StringIO(text))
+    for parts in reader:
+        if not parts or not parts[0].strip():
+            continue
+        keys = ["name", "category", "cost", "sell", "monthly_sales", "competition"]
+        row = {k: (parts[i] if i < len(parts) else "") for i, k in enumerate(keys)}
+        rows.append(_norm(row, parts[0].strip()))
+    return rows
+
+
+def render_source(args, text):
+    from .sourcing_rank import rank_candidates, summarize, fund_within_budget
+    from .profile import PROFILES
+    from .fees import PRESETS
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    fee = PRESETS[args.fees]
+    text = text or _SAMPLE_CANDIDATES
+    inner = ["<h2>🧪 Source · rank candidates before you buy</h2>",
+             "<form class=card action='/source' method=get>"
+             "<div class=sub>one product per line: <b>name,category,cost,sell,monthly_sales,competition</b></div>"
+             "<textarea name=cand>%s</textarea><input type=hidden name=profile value='%s'>"
+             "<br><button>Rank candidates</button> <span class=sub>fees: %s</span></form>"
+             % (_esc(text), _esc(args.profile or "generic"), _esc(fee.name))]
+    ranked = rank_candidates(_parse_candidates(text), prof, fee)
+    summ = summarize(ranked)
+    plan = fund_within_budget(ranked, getattr(args, "capital", None) or 2000)
+    inner.append(
+        "<div class=metrics>"
+        "<div class='metric'><div class=k>Candidates</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric go'><div class=k>CORNER / STRONG</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric'><div class=k>Profit potential /mo</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "</div>" % (summ["count"], summ["corner"] + summ["strong"], round(summ["monthly_profit"])))
+    inner.append("<table><tr><th>product<th>category<th class=r>cost<th class=r>sell<th class=r>margin<th class=r>EDGE<th>verdict<th class=r>$/mo</tr>")
+    for r in ranked:
+        inner.append("<tr><td>%s<td>%s<td class=r>$%.2f<td class=r>$%.2f<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span><td class=r>$%.0f</tr>"
+                     % (_esc(r["name"]), _esc(r["category"]), r["cost"], r["sell"], r["margin"] * 100,
+                        r["composite"] * 100, r["verdict"], r["verdict"], r["monthly_profit"]))
+    inner.append("</table>")
+    if plan["chosen"]:
+        rows = "".join("<tr><td>%s<td class=r>%d units<td class=r>$%.0f</tr>" % (_esc(c["name"]), c["test_units"], c["test_cash"]) for c in plan["chosen"])
+        inner.append("<h2>💰 Fund first (within $%.0f test budget)</h2><table><tr><th>product<th class=r>test batch<th class=r>cash</tr>%s"
+                     "<tr><td><b>committed</b><td><td class=r><b>$%.0f</b></tr></table>" % (getattr(args, "capital", None) or 2000, rows, plan["spent"]))
+    return _shell(_ctx_from_args(args), "source", "".join(inner))
+
+
 # ── LIVE EDGE page (Keepa) ───────────────────────────────────────────────────
 def render_live(args, asins):
     inner = ["<h2>🧭 Live edge &amp; arbitrage (Keepa)</h2>",
@@ -894,6 +952,8 @@ def serve(args):
                     body = render_rebuy(a)
                 elif path == "/reprice":
                     body = render_reprice(a)
+                elif path == "/source":
+                    body = render_source(a, (qs.get("cand") or [""])[0])
                 elif path == "/sheet":
                     body = render_sheet(a)
                 elif path == "/live":

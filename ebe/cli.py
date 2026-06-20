@@ -912,6 +912,31 @@ def _channel_client(args):
     return "Amazon SP-API", SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
 
 
+def _rank(args):
+    """Rank candidate products to source by true edge + margin-after-fees."""
+    from .sourcing_rank import load_candidates, rank_candidates, fund_within_budget, summarize
+    if not args.file:
+        raise SystemExit("usage: ebe rank --file candidates.csv [--fees shopify] [--profile hookah] [--budget 2000]")
+    from .profile import PROFILES
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    fee = PRESETS[args.fees]
+    ranked = rank_candidates(load_candidates(args.file), prof, fee)
+    summ = summarize(ranked)
+    print("\n══ EBE COMMAND · SOURCING RANK (%s · fees %s) ══" % (prof.name, fee.name))
+    print("  %d candidate(s) · %d CORNER · %d STRONG · $%.0f/mo combined profit potential\n"
+          % (summ["count"], summ["corner"], summ["strong"], summ["monthly_profit"]))
+    print("  %-26s %7s %7s %6s %5s  %-7s %s" % ("product", "cost", "sell", "margin", "EDGE", "verdict", "$/mo"))
+    for r in ranked:
+        print("  %-26s %7.2f %7.2f %5.0f%% %4.0f%%  %-7s $%.0f"
+              % (r["name"][:26], r["cost"], r["sell"], r["margin"] * 100, r["composite"] * 100, r["verdict"], r["monthly_profit"]))
+    if args.budget:
+        plan = fund_within_budget(ranked, args.budget)
+        print("\n  💰 fund first within $%.0f test budget:" % args.budget)
+        for c in plan["chosen"]:
+            print("    %-26s %d units · $%.0f" % (c["name"][:26], c["test_units"], c["test_cash"]))
+        print("    ── $%.0f committed → $%.0f/mo profit potential" % (plan["spent"], plan["monthly_profit"]))
+
+
 def _count(args):
     """Record a physical count — reconciles to truth and flags shrinkage."""
     from .store import Store
@@ -996,8 +1021,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1119,6 +1144,8 @@ def main(argv=None):
         return _count(args)
     if args.branch == "audit":
         return _audit(args)
+    if args.branch == "rank":
+        return _rank(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":
