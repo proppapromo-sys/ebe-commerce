@@ -954,8 +954,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1038,6 +1038,9 @@ def main(argv=None):
     if args.branch == "dashboard":
         from . import dashboard
         return dashboard.serve(args)
+    if args.branch == "storefront":
+        from . import storefront
+        return storefront.serve(args)
     if args.branch == "ears":
         from .adapters.base import AdapterError
         try:
