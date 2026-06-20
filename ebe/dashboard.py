@@ -25,8 +25,8 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 NAV = [("/brief", "Brief", "brief"), ("/", "Today", "today"), ("/rebuy", "Re-buy", "rebuy"),
-       ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"),
-       ("/venue", "Venue", "venue")]
+       ("/reprice", "Reprice", "reprice"), ("/live", "Live Edge", "live"),
+       ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
 _CSS = """
 :root{
@@ -544,6 +544,84 @@ def render_brief(args):
     return _shell(_ctx_from_args(args), "brief", "".join(inner), refresh=True)
 
 
+# ── REPRICE page (competitive pricing vs live market) ────────────────────────
+def render_reprice(args):
+    from .repricer import reprice_catalog, live_prices_by_sku
+    from .fees import PRESETS
+    store, live, db = _store_for(args)
+    prof = args.profile or "generic"
+    p = urllib.parse.quote(prof)
+    strategy = getattr(args, "strategy", None) or "undercut"
+    fee = PRESETS[args.fees]
+    prods = store.products()
+
+    prices, src = {}, "floor only — no competitor data"
+    try:
+        kp = live_prices_by_sku(prods, _keepa_fetch())
+        if kp:
+            prices, src = kp, "live · Keepa"
+    except Exception:
+        pass
+    recs = reprice_catalog(prods, prices, fee, strategy=strategy)
+    movers = [r for r in recs if abs(r["move"]) >= 0.01]
+    uplift = sum(r["move"] for r in recs if r["move"] > 0)
+
+    inner = ["<h2>🏷️ Reprice · %s</h2>" % _esc(strategy)]
+    if not live:
+        inner.append("<div class=banner>Sample catalog — add an <b>asin</b> column to your products "
+                     "for live Keepa pricing. Strategy &amp; floor still compute now.</div>")
+    inner.append("<form class=card action='/reprice' method=get><input type=hidden name=profile value='%s'>"
+                 "strategy: <select name=strategy onchange='this.form.submit()'>%s</select> "
+                 "<span class=sub>source: %s</span></form>"
+                 % (_esc(prof), "".join("<option%s>%s</option>" % (" selected" if s == strategy else "", s)
+                                        for s in ("undercut", "match", "premium")), _esc(src)))
+    inner.append(
+        "<div class=metrics>"
+        "<div class='metric'><div class=k>SKUs priced</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric alert'><div class=k>Price moves</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric go'><div class=k>Monthly upside</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "</div>" % (len(recs), len(movers), round(uplift * 30)))
+
+    inner.append("<table><tr><th>product<th class=r>now<th class=r>→ rec<th class=r>floor<th class=r>ROI<th>why%s</tr>"
+                 % ("<th>act" if live else ""))
+    for r in recs:
+        flag = "⚓" if r["at_floor"] else ("↑" if r["move"] > 0 else ("↓" if r["move"] < 0 else "="))
+        act = ""
+        if live and abs(r["move"]) >= 0.01:
+            act = "<td><a class='btn sm' href='/price?apply=%s&to=%.2f&profile=%s'>Apply</a>" % (
+                urllib.parse.quote(r["sku"]), r["recommended"], p)
+        elif live:
+            act = "<td><span class=sub>—</span>"
+        inner.append("<tr><td>%s<td class=r>$%.2f<td class=r><b>$%.2f</b> %s<td class=r>$%.2f<td class=r>%.0f%%<td class=sub>%s%s</tr>"
+                     % (_esc(r["name"]), r["current"], r["recommended"], flag, r["floor"], r["roi"] * 100, _esc(r["reason"]), act))
+    inner.append("</table>")
+    return _shell(_ctx_from_args(args), "reprice", "".join(inner), refresh=True)
+
+
+def _keepa_fetch():
+    """Return KeepaClient().fetch, or a function yielding nothing if Keepa isn't configured."""
+    try:
+        from .adapters.keepa import KeepaClient
+        return KeepaClient().fetch
+    except Exception:
+        return lambda asins: []
+
+
+def _do_price(args, qs):
+    """Apply a recommended price to a SKU in the real database."""
+    from .store import Store, DEFAULT_DB
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    sku = (qs.get("apply") or [""])[0]
+    try:
+        to = float((qs.get("to") or ["0"])[0])
+    except ValueError:
+        return
+    p = store.product(sku)
+    if p and to > 0:
+        store.upsert_products([{**p, "sell": to}])
+
+
 # ── ORDER SHEET view (sendable POs grouped by supplier) ──────────────────────
 def render_sheet(args):
     from .purchasing import orders_by_supplier
@@ -679,6 +757,8 @@ def _req_args(base, query):
         a.profile = qs["profile"][0]
     if qs.get("fees") and qs["fees"][0] in PRESETS:
         a.fees = qs["fees"][0]
+    if qs.get("strategy") and qs["strategy"][0] in ("undercut", "match", "premium"):
+        a.strategy = qs["strategy"][0]
     if qs.get("capital"):
         try:
             a.capital = float(qs["capital"][0])
@@ -708,6 +788,10 @@ def serve(args):
                 _do_po(args, qs)
                 prof = (qs.get("profile") or ["generic"])[0]
                 self.send_response(303); self.send_header("Location", "/rebuy?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
+            if path == "/price":
+                _do_price(args, qs)
+                prof = (qs.get("profile") or ["generic"])[0]
+                self.send_response(303); self.send_header("Location", "/reprice?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
             a = _req_args(args, query)
             try:
                 if path in ("/", ""):
@@ -716,6 +800,8 @@ def serve(args):
                     body = render_brief(a)
                 elif path == "/rebuy":
                     body = render_rebuy(a)
+                elif path == "/reprice":
+                    body = render_reprice(a)
                 elif path == "/sheet":
                     body = render_sheet(a)
                 elif path == "/live":

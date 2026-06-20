@@ -49,6 +49,12 @@ class DashboardRenderTests(unittest.TestCase):
         page = dashboard.render_sheet(_args())
         self.assertIn("Order sheets", page)            # renders even with no live POs
 
+    def test_reprice_tab_shows_floor_and_strategy(self):
+        page = dashboard.render_reprice(_args(strategy="undercut"))
+        self.assertIn("Reprice", page)
+        self.assertIn("floor", page.lower())           # floor analysis present without keys
+        self.assertIn("data-count", page)              # animated metric tiles
+
     def test_rebuy_tab_renders_proposals(self):
         import os
         import tempfile

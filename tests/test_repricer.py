@@ -41,6 +41,20 @@ class RepricerTests(unittest.TestCase):
         recs = reprice_catalog(prods, {"A": [22.00], "B": [19.00]}, AMAZON_FBA)
         self.assertEqual([r["sku"] for r in recs][0], "B")   # bigger price move first
 
+    def test_live_prices_map_asins_to_skus(self):
+        from ebe.repricer import live_prices_by_sku
+        prods = [{"sku": "CAP", "asin": "B01", "cost": 7, "sell": 24},
+                 {"sku": "NOASIN", "cost": 5, "sell": 20}]   # no asin → skipped
+
+        def fetch(asins):
+            self.assertEqual(asins, ["B01"])
+            return [{"asin": "B01", "stats": {"buyBoxPrice": 2199, "current": [2250]}}]
+
+        out = live_prices_by_sku(prods, fetch)
+        self.assertIn("CAP", out)
+        self.assertNotIn("NOASIN", out)
+        self.assertIn(21.99, out["CAP"])     # buyBoxPrice cents → dollars
+
 
 if __name__ == "__main__":
     unittest.main()

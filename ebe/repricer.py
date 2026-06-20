@@ -61,6 +61,22 @@ def recommend(item, competitors, fee, floor_roi=0.30, strategy="undercut", step=
             "move": move, "at_floor": rec <= floor + 1e-9, "reason": reason}
 
 
+def live_prices_by_sku(products, fetch):
+    """Pull live competitor prices for products that carry an ASIN.
+    `fetch(asins)` returns Keepa products (the real KeepaClient.fetch, or a stub).
+    Returns {sku: [competitor prices]}."""
+    from .adapters.keepa import keepa_market_prices
+    asin_to_sku = {p["asin"]: p["sku"] for p in products if p.get("asin")}
+    if not asin_to_sku:
+        return {}
+    out = {}
+    for kp in fetch(list(asin_to_sku)) or []:
+        sku = asin_to_sku.get(kp.get("asin"))
+        if sku:
+            out[sku] = keepa_market_prices(kp)
+    return out
+
+
 def reprice_catalog(products, prices_by_sku, fee, floor_roi=0.30, strategy="undercut"):
     """Recommend a price per stored product given {sku: [competitor prices]}. Sorted by upside."""
     out = []

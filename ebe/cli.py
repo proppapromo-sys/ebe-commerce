@@ -645,7 +645,17 @@ def _reprice(args):
     if not prods:
         raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
     prices = {}
-    if args.alt:
+    if getattr(args, "live", False):
+        from .repricer import live_prices_by_sku
+        from .adapters.keepa import KeepaClient
+        from .adapters.base import AdapterError
+        try:
+            prices = live_prices_by_sku(prods, KeepaClient().fetch)
+            n = sum(1 for v in prices.values() if v)
+            print("🛰️  pulled live competitor prices for %d ASIN-mapped SKU(s) from Keepa" % n)
+        except AdapterError as e:
+            raise SystemExit("live reprice failed: %s\n(run `python -m ebe check`)" % e)
+    elif args.alt:
         import csv as _csv
         with open(args.alt, newline="", encoding="utf-8") as fh:
             for row in _csv.DictReader(fh):
@@ -799,6 +809,7 @@ def main(argv=None):
     ap.add_argument("--square", action="store_true", help="venue: pull real sales from Square POS (needs SQUARE_TOKEN)")
     ap.add_argument("--strategy", help="reprice: undercut | match | premium (default undercut)")
     ap.add_argument("--floor-roi", type=float, default=None, dest="floor_roi", help="reprice: minimum ROI after fees to defend (default 0.30)")
+    ap.add_argument("--live", action="store_true", help="reprice: pull live competitor prices from Keepa (uses each SKU's asin)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:

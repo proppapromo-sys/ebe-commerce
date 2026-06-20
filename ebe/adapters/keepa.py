@@ -130,6 +130,24 @@ def keepa_price_points(kp):
     return pts
 
 
+def keepa_market_prices(kp):
+    """Current competing prices for a product, in dollars (buy-box, Amazon, lowest New).
+    The set the repricer positions against — deduped, only real positive prices."""
+    st = kp.get("stats") or {}
+    out = []
+    for v in (st.get("buyBoxPrice"), _stat_arr(st, "current"),
+              _cents((st.get("current") or [None])[0]), keepa_sell_price(kp)):
+        d = _cents(v) if isinstance(v, (int, float)) else v
+        if isinstance(d, (int, float)) and d and d > 0:
+            out.append(round(float(d), 2))
+    # de-dupe while preserving order
+    seen, uniq = set(), []
+    for p in out:
+        if p not in seen:
+            seen.add(p); uniq.append(p)
+    return uniq
+
+
 _RANK_IDX = 3       # Keepa price-type index 3 = SALES rank
 
 

@@ -93,7 +93,7 @@ def load_store_rows(path) -> list:
                 "fulfilment": _f(row, "fulfilment", 4.0),
                 "lead_time_days": _i(row, "lead_time_days", 21),
                 "on_hand": _i(row, "on_hand"), "monthly_sales": _i(row, "monthly_sales"),
-                "supplier": _s(row, "supplier"),
+                "supplier": _s(row, "supplier"), "asin": _s(row, "asin"),
             }
             if size or color:
                 tag = "·".join(x for x in (size, color) if x)

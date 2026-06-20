@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS products (
     on_hand        INTEGER NOT NULL DEFAULT 0,
     monthly_sales  INTEGER NOT NULL DEFAULT 0,
     supplier       TEXT,
+    asin           TEXT,
     updated_at     REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS purchase_orders (
@@ -76,7 +77,7 @@ _SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order
 
 # columns the catalog importer understands (anything else in a row is ignored)
 _PRODUCT_COLS = ("sku", "name", "category", "cost", "sell", "fulfilment",
-                 "lead_time_days", "on_hand", "monthly_sales", "supplier")
+                 "lead_time_days", "on_hand", "monthly_sales", "supplier", "asin")
 
 
 class Store:
@@ -87,7 +88,15 @@ class Store:
         self._cx = sqlite3.connect(path)
         self._cx.row_factory = sqlite3.Row
         self._cx.executescript(_SCHEMA)
+        self._migrate()
         self._cx.commit()
+
+    def _migrate(self):
+        """Add columns introduced after a DB was first created (idempotent)."""
+        have = {r["name"] for r in self._cx.execute("PRAGMA table_info(products)")}
+        for col, decl in (("asin", "TEXT"),):
+            if col not in have:
+                self._cx.execute("ALTER TABLE products ADD COLUMN %s %s" % (col, decl))
 
     def close(self):
         self._cx.close()
