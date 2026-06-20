@@ -1110,6 +1110,43 @@ def _sync(args):
     print("  ── %d SKUs updated. Now run:  python -m ebe rebuy" % len(res["updated"]))
 
 
+def _autopilot(args):
+    """The self-running loop: sync → re-buy → (optional) reprice, every N minutes."""
+    import time as _time
+    from .store import Store
+    from . import autopilot
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    every = args.every or 60
+    cycles = args.cycles
+    print("\n══ EBE COMMAND · AUTOPILOT ══")
+    print("  every %dm · %s · re-buys as %s%s"
+          % (every, ("%d cycle(s)" % cycles) if cycles else "running forever (Ctrl-C to stop)",
+             "ORDERS" if args.auto else "drafts",
+             " · repricing live" if args.reprice else ""))
+
+    def show(n, r):
+        stamp = _time.strftime("%H:%M:%S")
+        line = ("  [%s] #%d  sync %d/%dch · %d draft(s) $%.0f"
+                % (stamp, n, r["synced"], r["channels"], r["drafts"], r["cash"]))
+        if r["repriced"]:
+            line += " · repriced %d" % r["repriced"]
+        if r["errors"]:
+            line += "  ⚠ " + "; ".join(r["errors"][:2])
+        print(line)
+
+    try:
+        autopilot.run(s, every_minutes=every, cycles=cycles, on_cycle=show,
+                      prices=getattr(args, "with_prices", False), auto=args.auto,
+                      budget=args.budget, reprice=args.reprice,
+                      strategy=args.strategy or "undercut",
+                      floor_roi=args.floor_roi if args.floor_roi is not None else 0.30,
+                      region=args.region or "na", marketplace=args.marketplace or "us")
+    except KeyboardInterrupt:
+        print("\n  autopilot stopped. Review drafts:  python -m ebe orders --status draft")
+
+
 def _venue(args):
     """Venue supply tracking — POS counts -> supplies consumed -> reorder."""
     from .venue import engine
@@ -1184,8 +1221,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1250,6 +1287,9 @@ def main(argv=None):
     ap.add_argument("--keygen", action="store_true", help="license: generate the owner keypair (run once)")
     ap.add_argument("--issue", metavar="CLIENT", help="license: mint a license token for a client (owner only)")
     ap.add_argument("--days", type=int, default=30, help="license: how many days the issued license is valid (default 30)")
+    ap.add_argument("--every", type=int, default=60, help="autopilot: minutes between cycles (default 60)")
+    ap.add_argument("--cycles", type=int, default=None, help="autopilot: stop after N cycles (default: run forever)")
+    ap.add_argument("--reprice", action="store_true", help="autopilot: also reprice to the live market (needs Keepa + per-SKU asin)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -1346,6 +1386,8 @@ def main(argv=None):
             return _sync(args)
         except AdapterError as e:
             raise SystemExit("sync failed: %s\n(run `python -m ebe check`, see SETUP.md)" % e)
+    if args.branch == "autopilot":
+        return _autopilot(args)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":
