@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS suppliers (
     min_order      REAL NOT NULL DEFAULT 0,
     notes          TEXT
 );
+CREATE TABLE IF NOT EXISTS customers (
+    name       TEXT PRIMARY KEY,
+    email      TEXT,
+    phone      TEXT,
+    terms_days INTEGER NOT NULL DEFAULT 14,
+    notes      TEXT
+);
 CREATE TABLE IF NOT EXISTS vendor_offers (
     sku            TEXT NOT NULL,
     supplier       TEXT NOT NULL,
@@ -109,6 +116,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 """
 
 _OFFER_COLS = ("sku", "supplier", "unit_cost", "lead_time_days", "min_qty", "pack_size")
+_CUSTOMER_COLS = ("name", "email", "phone", "terms_days", "notes")
 _SUB_COLS = ("name", "sku", "qty", "cadence_days", "next_due", "kind", "counterparty", "unit_price")
 
 _SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order", "notes")
@@ -274,6 +282,34 @@ class Store:
         if not name:
             return None
         row = self._cx.execute("SELECT * FROM suppliers WHERE name=?", (name,)).fetchone()
+        return dict(row) if row else None
+
+    # ---- customers -----------------------------------------------------------
+    def upsert_customers(self, rows) -> int:
+        n = 0
+        for raw in rows:
+            r = {k: raw.get(k) for k in _CUSTOMER_COLS if k in raw}
+            name = (r.get("name") or "").strip()
+            if not name:
+                continue
+            r["name"] = name
+            cols = list(r.keys())
+            ph = ",".join("?" for _ in cols)
+            upd = ",".join("%s=excluded.%s" % (c, c) for c in cols if c != "name")
+            self._cx.execute(
+                "INSERT INTO customers (%s) VALUES (%s) ON CONFLICT(name) DO UPDATE SET %s"
+                % (",".join(cols), ph, upd), [r[c] for c in cols])
+            n += 1
+        self._cx.commit()
+        return n
+
+    def customers(self) -> list:
+        return [dict(r) for r in self._cx.execute("SELECT * FROM customers ORDER BY name").fetchall()]
+
+    def customer(self, name):
+        if not name:
+            return None
+        row = self._cx.execute("SELECT * FROM customers WHERE name=?", (name,)).fetchone()
         return dict(row) if row else None
 
     # ---- vendor bidding ------------------------------------------------------

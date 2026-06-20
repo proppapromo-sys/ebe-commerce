@@ -55,8 +55,12 @@ def summarize(store, as_of=None) -> dict:
 
 
 def bill_subscription(store, sub, revenue, occurrence_ts):
-    """Open a receivable for one fulfilled sell-subscription (idempotent per occurrence)."""
+    """Open a receivable for one fulfilled sell-subscription (idempotent per occurrence).
+    Uses the customer's payment terms for the due date when the customer is on file."""
     ref = "sub:%d:%d" % (sub["id"], int(occurrence_ts))
+    party = sub.get("counterparty") or "Customer"
+    cust = store.customer(party)
+    terms = (cust or {}).get("terms_days") or 14
     return store.create_invoice(
-        sub.get("counterparty") or "Customer", revenue, kind="AR",
-        ref=ref, memo="%s · %s x%d" % (sub.get("name") or sub["sku"], sub["sku"], sub["qty"]))
+        party, revenue, kind="AR", due_days=terms, ref=ref,
+        memo="%s · %s x%d" % (sub.get("name") or sub["sku"], sub["sku"], sub["qty"]))

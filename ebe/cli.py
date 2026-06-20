@@ -717,6 +717,44 @@ def _subs(args):
                  sub["unit_price"], (sub["counterparty"] or "")[:16], days))
 
 
+def _customers(args):
+    """Customer directory + their open balances."""
+    from .store import Store
+    s = Store(_db_path(args))
+    if args.file:
+        import csv as _csv
+        rows = []
+        with open(args.file, newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                rows.append({"name": (row.get("name") or "").strip(),
+                             "email": (row.get("email") or "").strip(),
+                             "phone": (row.get("phone") or "").strip(),
+                             "terms_days": int(float(row.get("terms_days") or 14)),
+                             "notes": (row.get("notes") or "").strip()})
+        print("👥 imported %d customer(s) from %s" % (s.upsert_customers(rows), args.file))
+    from .statements import open_ar_by_customer
+    ar = open_ar_by_customer(s)
+    print("\n══ EBE COMMAND · CUSTOMERS (%d) ══" % len(s.customers()))
+    for c in s.customers():
+        owed = sum(i["amount"] for i in ar.get(c["name"], []))
+        contact = " · ".join(x for x in (c.get("email"), c.get("phone")) if x)
+        print("  %-22s net %2dd  owes $%-9.2f %s" % (c["name"][:22], c["terms_days"], owed, contact))
+
+
+def _statement(args):
+    """Sendable customer statement(s) of open receivables."""
+    from .store import Store
+    from . import statements
+    s = Store(_db_path(args))
+    doc = statements.statement(s, args.id) if args.id else statements.all_statements(s)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(doc)
+        print("🧾 wrote statement → %s" % args.out)
+    else:
+        print(doc)
+
+
 def _vendors(args):
     """Vendor bidding — load competing supplier offers and show who wins each SKU."""
     from .store import Store
@@ -916,8 +954,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1028,6 +1066,10 @@ def main(argv=None):
         return _ledger(args)
     if args.branch == "act":
         return _act(args)
+    if args.branch == "customers":
+        return _customers(args)
+    if args.branch == "statement":
+        return _statement(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":
