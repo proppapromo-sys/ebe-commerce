@@ -24,9 +24,9 @@ import types
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-NAV = [("/brief", "Brief", "brief"), ("/", "Today", "today"), ("/rebuy", "Re-buy", "rebuy"),
-       ("/reprice", "Reprice", "reprice"), ("/live", "Live Edge", "live"),
-       ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
+NAV = [("/brief", "Brief", "brief"), ("/act", "Act", "act"), ("/", "Today", "today"),
+       ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"),
+       ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
 _CSS = """
 :root{
@@ -577,6 +577,57 @@ def render_brief(args):
     return _shell(_ctx_from_args(args), "brief", "".join(inner), refresh=not want_ai)
 
 
+# ── ACT page (propose → approve → execute) ───────────────────────────────────
+def render_act(args):
+    from . import actions
+    store, live, db = _store_for(args)
+    prof = args.profile or "generic"
+    p = urllib.parse.quote(prof)
+    acts = actions.propose(store)
+    summ = actions.summarize(acts)
+
+    inner = ["<h2>⚡ Act · approve the day's moves</h2>"]
+    if not live:
+        inner.append("<div class=banner>Sample catalog — load yours to act on real stock. "
+                     "Approvals are disabled here.</div>")
+    inner.append(
+        "<div class=metrics>"
+        "<div class='metric'><div class=k>Proposed moves</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric alert'><div class=k>Cash out</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric go'><div class=k>Cash in</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "</div>" % (summ["count"], round(summ["cash_out"]), round(summ["cash_in"])))
+
+    if not acts:
+        inner.append("<div class=card><span class=ok>✓ All clear</span> — nothing to action right now.</div>")
+        return _shell(_ctx_from_args(args), "act", "".join(inner), refresh=True)
+
+    if live:
+        inner.append("<div class=card><a class='btn go' href='/do?all=1&profile=%s'>⚡ Approve all %d</a> "
+                     "<span class=sub>or approve individually below</span></div>" % (p, len(acts)))
+    inner.append("<table><tr><th>move<th class=r>impact<th>flow%s</tr>" % ("<th>approve" if live else ""))
+    for a in acts:
+        flow = "<span class=ok>↑ in</span>" if a.get("flow") == "in" else "↓ out"
+        act = ("<td><a class='btn sm' href='/do?act=%s&profile=%s'>Approve</a>"
+               % (urllib.parse.quote(a["id"]), p)) if live else ""
+        inner.append("<tr><td>%s<td class=r>$%.0f<td>%s%s</tr>" % (_esc(a["label"]), a["impact"], flow, act))
+    inner.append("</table>")
+    return _shell(_ctx_from_args(args), "act", "".join(inner), refresh=True)
+
+
+def _do_act(args, qs):
+    """Execute approved action(s) against the real database."""
+    from .store import Store, DEFAULT_DB
+    from . import actions
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    if not store.products():
+        return
+    if qs.get("all"):
+        actions.execute(store, [a["id"] for a in actions.propose(store)])
+    elif qs.get("act"):
+        actions.execute(store, [qs["act"][0]])
+
+
 # ── REPRICE page (competitive pricing vs live market) ────────────────────────
 def render_reprice(args):
     from .repricer import reprice_catalog, live_prices_by_sku
@@ -827,12 +878,18 @@ def serve(args):
                 _do_price(args, qs)
                 prof = (qs.get("profile") or ["generic"])[0]
                 self.send_response(303); self.send_header("Location", "/reprice?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
+            if path == "/do":
+                _do_act(args, qs)
+                prof = (qs.get("profile") or ["generic"])[0]
+                self.send_response(303); self.send_header("Location", "/act?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
             a = _req_args(args, query)
             try:
                 if path in ("/", ""):
                     body = render(_data(a))
                 elif path == "/brief":
                     body = render_brief(a)
+                elif path == "/act":
+                    body = render_act(a)
                 elif path == "/rebuy":
                     body = render_rebuy(a)
                 elif path == "/reprice":

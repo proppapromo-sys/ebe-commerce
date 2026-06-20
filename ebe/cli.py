@@ -614,6 +614,31 @@ def _suppliers(args):
         print("  %-22s lead %2dd  min $%-6.0f %s" % (r["name"][:22], r["lead_time_days"], r["min_order"], contact))
 
 
+def _act(args):
+    """Let EBE act — propose the day's moves; approve with --run (all) or --id (one)."""
+    from .store import Store
+    from . import actions
+    s = Store(_db_path(args))
+    proposed = actions.propose(s)
+    if not proposed:
+        print("\n══ EBE COMMAND · ACT ══\n  ✓ Nothing to action — you're all clear.")
+        return
+    if args.run or args.id:
+        ids = [args.id] if args.id else [a["id"] for a in proposed]
+        print("\n══ EBE COMMAND · ACT · executing %d ══" % len(ids))
+        for r in actions.execute(s, ids):
+            print("  %s %-14s %s" % ("✓" if r["ok"] else "·", r["id"], r["msg"]))
+        return
+    summ = actions.summarize(proposed)
+    print("\n══ EBE COMMAND · ACT — %d proposed · $%.0f out · $%.0f in ══"
+          % (summ["count"], summ["cash_out"], summ["cash_in"]))
+    for a in proposed:
+        arrow = "↑in " if a.get("flow") == "in" else "↓out"
+        print("  [%s] %s  %-12s $%8.0f  %s" % ("approve", arrow, a["id"], a["impact"], a["label"]))
+    print("\n  approve all:  python -m ebe act --run")
+    print("  approve one:  python -m ebe act --id %s" % proposed[0]["id"])
+
+
 def _ledger(args):
     """Accounts receivable / payable — who owes you, who you owe, net position."""
     import time
@@ -876,8 +901,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -984,6 +1009,8 @@ def main(argv=None):
         return _subs(args)
     if args.branch == "ledger":
         return _ledger(args)
+    if args.branch == "act":
+        return _act(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":

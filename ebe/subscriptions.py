@@ -44,32 +44,47 @@ def summarize(store, as_of=None) -> dict:
     }
 
 
+def _process(store, sub, as_of):
+    """Fulfil one subscription occurrence: buy → draft PO, sell → revenue + receivable."""
+    if sub["kind"] == "buy":
+        offer = store.best_offer(sub["sku"], sub["qty"])
+        unit_cost = (offer or {}).get("unit_cost") or sub.get("unit_price") or 0.0
+        supplier = (offer or {}).get("supplier") or sub.get("counterparty")
+        po_id = store.create_po(sub["sku"], sub["qty"], unit_cost,
+                                reason="subscription: %s" % (sub.get("name") or sub["sku"]),
+                                supplier=supplier, status="draft")
+        return {"kind": "buy", "sub": sub, "po": po_id, "cash": round(sub["qty"] * unit_cost, 2)}
+    revenue = round(sub["qty"] * (sub.get("unit_price") or 0), 2)
+    store._log("subscription_sell", sub["sku"], sub["qty"],
+               "%s · $%.2f" % (sub.get("counterparty") or "", revenue))
+    from .ledger import bill_subscription
+    inv = bill_subscription(store, sub, revenue, sub["next_due"])
+    return {"kind": "sell", "sub": sub, "revenue": revenue, "invoice": inv}
+
+
 def run_due(store, as_of=None):
     """Process every due subscription, then roll it forward. Returns what was actioned.
 
     buy  → raise a draft PO (vendor auction picks the supplier/cost)
-    sell → book the recurring revenue as an event (real cash still lands via Stripe)
+    sell → book the recurring revenue + open a receivable
     """
     as_of = time.time() if as_of is None else as_of
     actioned = []
     for sub in store.due_subscriptions(as_of):
-        if sub["kind"] == "buy":
-            offer = store.best_offer(sub["sku"], sub["qty"])
-            unit_cost = (offer or {}).get("unit_cost") or sub.get("unit_price") or 0.0
-            supplier = (offer or {}).get("supplier") or sub.get("counterparty")
-            po_id = store.create_po(sub["sku"], sub["qty"], unit_cost,
-                                    reason="subscription: %s" % (sub.get("name") or sub["sku"]),
-                                    supplier=supplier, status="draft")
-            actioned.append({"kind": "buy", "sub": sub, "po": po_id,
-                             "cash": round(sub["qty"] * unit_cost, 2)})
-        else:  # sell
-            revenue = round(sub["qty"] * (sub.get("unit_price") or 0), 2)
-            store._log("subscription_sell", sub["sku"], sub["qty"],
-                       "%s · $%.2f" % (sub.get("counterparty") or "", revenue))
-            from .ledger import bill_subscription
-            inv = bill_subscription(store, sub, revenue, sub["next_due"])
-            actioned.append({"kind": "sell", "sub": sub, "revenue": revenue, "invoice": inv})
+        actioned.append(_process(store, sub, as_of))
         store.advance_subscription(sub["id"], as_of)
     if actioned:
         store._cx.commit()
     return actioned
+
+
+def run_one(store, sub_id, as_of=None):
+    """Process a single due subscription by id (for one-click approval). None if not due."""
+    as_of = time.time() if as_of is None else as_of
+    match = [s for s in store.due_subscriptions(as_of) if s["id"] == sub_id]
+    if not match:
+        return None
+    result = _process(store, match[0], as_of)
+    store.advance_subscription(sub_id, as_of)
+    store._cx.commit()
+    return result
