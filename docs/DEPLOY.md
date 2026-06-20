@@ -6,6 +6,50 @@ Postgres, no build step.
 
 ---
 
+## ⭐ Fastest path: Cloudflare Tunnel (you already have a Cloudflare domain)
+
+If your domain is on Cloudflare, this is **$0, no VPS, no port-forwarding, automatic HTTPS** —
+EBE runs on your own PC and Cloudflare gives clients a clean `https://ebe.yourdomain.com`.
+
+1. **Run EBE locally** (one terminal, leave it open):
+   ```powershell
+   cd $HOME\ebe-commerce
+   $env:EBE_HOST_SECRET="some-long-random-string"
+   $env:EBE_OWNER_PASSWORD="your-owner-password"
+   python -m ebe host --port 8080
+   ```
+2. **Install cloudflared** (Cloudflare's tunnel tool): https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ (Windows installer).
+3. **Authenticate + create the tunnel** (second terminal):
+   ```powershell
+   cloudflared tunnel login                         # opens browser → pick your domain
+   cloudflared tunnel create ebe
+   cloudflared tunnel route dns ebe ebe.yourdomain.com
+   ```
+4. **Run the tunnel** pointing at EBE:
+   ```powershell
+   cloudflared tunnel run --url http://localhost:8080 ebe
+   ```
+   Now `https://ebe.yourdomain.com/login` is live, encrypted, on your existing domain — free.
+
+> Want it always-on without keeping terminals open? Install both EBE and cloudflared as
+> services (`cloudflared service install`), or move to the VPS path below so it runs when
+> your PC is off. The tunnel works the same pointing at a VPS.
+
+Onboard a client (from the PC running EBE, or the `/admin` panel):
+```powershell
+python -m ebe tenant --issue cloud9 --id THEIR_PASSWORD --days 30
+```
+
+---
+
+## Always-on path: a $5/mo VPS
+
+(Use this when you don't want EBE tied to your PC being on. You can still front it with the
+same Cloudflare Tunnel, or use nginx + certbot as below.)
+
+---
+
+
 ## 1. Get a server (~$5/mo)
 Pick one, create an **Ubuntu 24.04** droplet/instance (smallest tier is plenty):
 - **DigitalOcean** ($6/mo) · **Hetzner** (€4/mo, cheapest) · **Linode/Vultr** ($5/mo)
