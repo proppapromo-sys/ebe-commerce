@@ -39,6 +39,26 @@ def require(keys):
     return [k for k in keys if not get(k)]
 
 
+def set_env(key, value, path=".env"):
+    """Upsert KEY=value in .env (create the file if needed). Also updates the live process."""
+    import os
+    lines, found = [], False
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().startswith(key + "="):
+                    lines.append("%s=%s\n" % (key, value)); found = True
+                else:
+                    lines.append(line)
+    if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
+        lines.append("%s=%s\n" % (key, value))
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.writelines(lines)
+    os.environ[key] = value
+
+
 # Which env vars each integration needs:
 # The full integration catalogue — one source of truth for the doctor (`check`),
 # the connections map (`connections`), and docs/INTEGRATIONS.md.

@@ -831,6 +831,21 @@ def _reprice(args):
               % (r["name"][:22], r["current"], r["recommended"], r["floor"], r["roi"] * 100, flag, r["reason"]))
 
 
+def _shopify_auth(args):
+    """One-time Shopify OAuth — capture the Admin API token into .env."""
+    from .adapters.shopify_auth import authorize, REDIRECT
+    from .adapters import config
+    from .adapters.base import AdapterError
+    print("\n══ EBE COMMAND · SHOPIFY CONNECT ══")
+    print("  Make sure the app's allowed redirect URL includes: %s\n" % REDIRECT)
+    try:
+        token = authorize()
+    except AdapterError as e:
+        raise SystemExit("Shopify connect failed: %s" % e)
+    config.set_env("SHOPIFY_TOKEN", token)
+    print("✅ saved SHOPIFY_TOKEN to .env — now run:  python -m ebe sync --channel shopify --with-prices")
+
+
 def _connections(args):
     """Show every integration: what it does, whether it's configured, and where to sign up."""
     from .adapters import config
@@ -901,8 +916,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -974,6 +989,8 @@ def main(argv=None):
         return _check()
     if args.branch == "connections":
         return _connections(args)
+    if args.branch == "shopify-auth":
+        return _shopify_auth(args)
     if args.branch == "outcome":
         return _outcome(args)
     if args.branch == "command":
