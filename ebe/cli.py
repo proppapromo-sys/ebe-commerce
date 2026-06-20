@@ -1133,10 +1133,36 @@ def _license(args):
     print("%s EBE license: %s — %s" % (icon, st["state"].upper(), st["msg"]))
 
 
+def _tenant(args):
+    """Owner admin for the hosted SaaS — create / renew / suspend client venues."""
+    from .tenancy import Tenants
+    tn = Tenants()
+    if args.keygen:                                    # reuse --keygen as "create"? no — use --issue
+        pass
+    if args.issue:                                     # create or renew a tenant: --issue ID
+        tid = args.issue.strip().lower()
+        if tn.tenant(tid):
+            tn.renew(tid, days=args.days)
+            print("🔁 renewed %s — %s" % (tid, tn.status_line(tid)))
+        else:
+            pw = args.id or "changeme"
+            tn.create_tenant(tid, args.profile or tid, pw, days=args.days)
+            print("👤 created tenant %s (password: %s) — %s" % (tid, pw, tn.status_line(tid)))
+            print("   they sign in at the host server's /login")
+        return
+    if args.score is not None and args.id:             # not used
+        pass
+    print("\n══ EBE HOST · TENANTS ══")
+    for t in tn.list_tenants():
+        print("  %-14s %-22s %s" % (t["id"], t["name"][:22], tn.status_line(t["id"])))
+    print("\n  create/renew:  python -m ebe tenant --issue cloud9 --id <password> --days 30")
+    print("  run server:    python -m ebe host --port 8080")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1209,7 +1235,12 @@ def main(argv=None):
 
     if args.branch == "license":
         return _license(args)
-    # 🔒 the paywall: everything but `license` requires the owner key or a valid token
+    if args.branch == "host":
+        from . import host
+        return host.serve(args)
+    if args.branch == "tenant":
+        return _tenant(args)
+    # 🔒 the paywall: everything but licensing/hosting requires the owner key or a valid token
     from .license import require, LicenseError
     try:
         require()

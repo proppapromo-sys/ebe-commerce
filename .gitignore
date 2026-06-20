@@ -17,3 +17,7 @@ ebe.db
 owner_private.key
 license.key
 ebe/license_pub.json
+
+# EBE hosted SaaS — control DB + per-tenant data (never commit)
+ebe_tenants.db
+tenants/
