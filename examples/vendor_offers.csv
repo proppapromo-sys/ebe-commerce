@@ -1,0 +1,6 @@
+sku,supplier,unit_cost,lead_time_days,min_qty,pack_size
+M2·OS·Navy,Apparel Mill Co,7.00,21,50,12
+M2·OS·Navy,Hookah Wholesale Direct,6.40,14,100,24
+M2·OS·Navy,Generic Imports LLC,6.10,30,250,50
+P3,Generic Imports LLC,14.00,30,1,1
+P3,Apparel Mill Co,12.80,25,50,10

@@ -597,6 +597,39 @@ def _suppliers(args):
         print("  %-22s lead %2dd  min $%-6.0f %s" % (r["name"][:22], r["lead_time_days"], r["min_order"], contact))
 
 
+def _vendors(args):
+    """Vendor bidding — load competing supplier offers and show who wins each SKU."""
+    from .store import Store
+    s = Store(_db_path(args))
+    if args.file:
+        import csv as _csv
+        rows = []
+        with open(args.file, newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                rows.append({
+                    "sku": (row.get("sku") or "").strip(),
+                    "supplier": (row.get("supplier") or "").strip(),
+                    "unit_cost": float(row.get("unit_cost") or 0),
+                    "lead_time_days": int(float(row.get("lead_time_days") or 21)),
+                    "min_qty": int(float(row.get("min_qty") or 1)),
+                    "pack_size": int(float(row.get("pack_size") or 1)),
+                })
+        print("📨 loaded %d vendor offer(s) from %s" % (s.upsert_offers(rows), args.file))
+    skus = sorted({o["sku"] for p in s.products() for o in s.offers_for(p["sku"])})
+    print("\n══ EBE COMMAND · VENDOR AUCTION ══")
+    if not skus:
+        print("  no offers yet — load a CSV (sku,supplier,unit_cost,lead_time_days,min_qty,pack_size)")
+        return
+    for sku in skus:
+        offers = s.offers_for(sku)
+        best = s.best_offer(sku)
+        print("\n  %s — %d bid(s):" % (sku, len(offers)))
+        for o in offers:
+            win = "🏆" if best and o["supplier"] == best["supplier"] else "  "
+            print("    %s %-22s $%6.2f/u  lead %2dd  min %d  pack %d"
+                  % (win, o["supplier"][:22], o["unit_cost"], o["lead_time_days"], o["min_qty"], o["pack_size"]))
+
+
 def _sell(args):
     """Record sales so on-hand stock drops (the consumption side of the loop)."""
     from .store import Store
@@ -748,8 +781,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -849,6 +882,8 @@ def main(argv=None):
         return _orders(args)
     if args.branch == "suppliers":
         return _suppliers(args)
+    if args.branch == "vendors":
+        return _vendors(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":

@@ -420,14 +420,22 @@ def render_rebuy(args):
         inner.append("<div class=card>%s</div>" % sheetbtn)
     if proposals:
         raiseall = ("<a class='btn go sm' href='/po?raiseall=1&profile=%s'>⚡ Raise all drafts</a>" % p) if live else ""
-        inner.append("<h2>📉 Proposed re-buys %s</h2>" % raiseall)
-        inner.append("<table><tr><th>product<th class=r>on hand<th class=r>cover<th class=r>order<th class=r>cash<th>why%s</tr>"
+        saved = sum(pr.get("savings") or 0 for pr in proposals)
+        won = (" · <span class=ok>vendor auction saved $%.0f</span>" % saved) if saved else ""
+        inner.append("<h2>📉 Proposed re-buys %s</h2>%s" % (raiseall, ("<div class=sub>%s</div>" % won.strip(" ·")) if won else ""))
+        inner.append("<table><tr><th>product<th>vendor<th class=r>on hand<th class=r>cover<th class=r>order<th class=r>cash<th class=r>saved%s</tr>"
                      % ("<th>act" if live else ""))
         for pr in proposals:
             act = ("<td><a class='btn sm' href='/po?raise=%s&profile=%s'>Approve</a>"
                    % (urllib.parse.quote(pr["sku"]), p)) if live else ""
-            inner.append("<tr><td>%s<td class=r>%d<td class=r>%.0fd<td class=r>%d<td class=r>$%.0f<td class=sub>%s%s</tr>"
-                         % (_esc(pr["name"]), pr["on_hand"], pr["cover_days"], pr["qty"], pr["cash"], _esc(pr["reason"]), act))
+            vendor = pr.get("supplier") or "—"
+            if pr.get("bids", 0) > 1:
+                vendor = "🏆 %s <span class=sub>(%d bids)</span>" % (_esc(vendor), pr["bids"])
+            else:
+                vendor = _esc(vendor)
+            sv = ("$%.0f" % pr["savings"]) if pr.get("savings") else "—"
+            inner.append("<tr><td>%s<td>%s<td class=r>%d<td class=r>%.0fd<td class=r>%d<td class=r>$%.0f<td class=r>%s%s</tr>"
+                         % (_esc(pr["name"]), vendor, pr["on_hand"], pr["cover_days"], pr["qty"], pr["cash"], sv, act))
         inner.append("</table>")
     else:
         inner.append("<div class=card><span class=ok>✓ Every SKU has cover</span> — nothing under the reorder line right now.</div>")

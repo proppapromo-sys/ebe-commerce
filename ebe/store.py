@@ -71,7 +71,19 @@ CREATE TABLE IF NOT EXISTS suppliers (
     min_order      REAL NOT NULL DEFAULT 0,
     notes          TEXT
 );
+CREATE TABLE IF NOT EXISTS vendor_offers (
+    sku            TEXT NOT NULL,
+    supplier       TEXT NOT NULL,
+    unit_cost      REAL NOT NULL DEFAULT 0,
+    lead_time_days INTEGER NOT NULL DEFAULT 21,
+    min_qty        INTEGER NOT NULL DEFAULT 1,
+    pack_size      INTEGER NOT NULL DEFAULT 1,
+    updated_at     REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (sku, supplier)
+);
 """
+
+_OFFER_COLS = ("sku", "supplier", "unit_cost", "lead_time_days", "min_qty", "pack_size")
 
 _SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order", "notes")
 
@@ -237,6 +249,40 @@ class Store:
             return None
         row = self._cx.execute("SELECT * FROM suppliers WHERE name=?", (name,)).fetchone()
         return dict(row) if row else None
+
+    # ---- vendor bidding ------------------------------------------------------
+    def upsert_offers(self, rows) -> int:
+        """Insert/update vendor offers keyed by (sku, supplier). Returns rows written."""
+        n = 0
+        for raw in rows:
+            r = {k: raw.get(k) for k in _OFFER_COLS if k in raw}
+            sku, sup = (r.get("sku") or "").strip(), (r.get("supplier") or "").strip()
+            if not sku or not sup:
+                continue
+            r["sku"], r["supplier"] = sku, sup
+            r["updated_at"] = round(time.time(), 3)
+            cols = list(r.keys())
+            ph = ",".join("?" for _ in cols)
+            upd = ",".join("%s=excluded.%s" % (c, c) for c in cols if c not in ("sku", "supplier"))
+            self._cx.execute(
+                "INSERT INTO vendor_offers (%s) VALUES (%s) ON CONFLICT(sku,supplier) DO UPDATE SET %s"
+                % (",".join(cols), ph, upd), [r[c] for c in cols])
+            n += 1
+        self._cx.commit()
+        return n
+
+    def offers_for(self, sku) -> list:
+        cur = self._cx.execute("SELECT * FROM vendor_offers WHERE sku=? ORDER BY unit_cost", (sku,))
+        return [dict(row) for row in cur.fetchall()]
+
+    def best_offer(self, sku, qty=None):
+        """The winning bid for a SKU: cheapest unit cost meeting min_qty, lead time as tie-break."""
+        offers = self.offers_for(sku)
+        eligible = [o for o in offers if qty is None or qty >= (o.get("min_qty") or 1)]
+        pool = eligible or offers
+        if not pool:
+            return None
+        return min(pool, key=lambda o: (o.get("unit_cost") or 0, o.get("lead_time_days") or 0))
 
     def record_sales(self, counts) -> int:
         """Bulk record sales from a {sku: units} mapping. Returns SKUs touched."""

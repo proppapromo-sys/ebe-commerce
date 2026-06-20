@@ -35,8 +35,16 @@ def cover_qty(item, target_cover_days=45):
     return max(0, round(target - item["on_hand"]))
 
 
+def _round_to_pack(qty, pack_size):
+    """Round an order quantity up to whole packs (pack_size 1 = no change)."""
+    pack = max(1, int(pack_size or 1))
+    return ((int(qty) + pack - 1) // pack) * pack
+
+
 def plan(store: Store, safety_days=10, target_cover_days=45) -> list:
-    """What the engine WOULD buy right now — pure read, writes nothing."""
+    """What the engine WOULD buy right now — pure read, writes nothing.
+    Runs a vendor auction per SKU: the cheapest eligible bid wins (else the product's
+    default cost/supplier), and the order rounds up to the winner's pack size."""
     open_skus = store.open_skus()
     proposals = []
     for p in store.products():
@@ -49,11 +57,23 @@ def plan(store: Store, safety_days=10, target_cover_days=45) -> list:
         if qty <= 0:
             continue
         rp = reorder_point(item, safety_days)
+
+        offer = store.best_offer(item["sku"], qty)
+        if offer:
+            unit_cost = offer.get("unit_cost") or item["cost"]
+            supplier = offer.get("supplier") or item.get("supplier")
+            qty = _round_to_pack(max(qty, offer.get("min_qty") or 1), offer.get("pack_size"))
+        else:
+            unit_cost, supplier = item["cost"], item.get("supplier")
+        savings = round((item["cost"] - unit_cost) * qty, 2) if unit_cost < item["cost"] else 0.0
+        n_bids = len(store.offers_for(item["sku"]))
+
         proposals.append({
             "sku": item["sku"], "name": item["name"], "qty": qty,
-            "unit_cost": item["cost"], "cash": round(qty * item["cost"], 2),
+            "unit_cost": unit_cost, "cash": round(qty * unit_cost, 2),
             "on_hand": item["on_hand"], "reorder_point": round(rp, 1),
-            "cover_days": round(days_of_cover(item), 1), "supplier": item.get("supplier"),
+            "cover_days": round(days_of_cover(item), 1), "supplier": supplier,
+            "savings": savings, "bids": n_bids,
             "reason": "cover %.0fd ≤ reorder point %.0f" % (days_of_cover(item), rp),
         })
     proposals.sort(key=lambda x: x["cover_days"])      # most urgent first
