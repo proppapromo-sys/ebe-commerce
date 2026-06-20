@@ -503,6 +503,22 @@ def render_brief(args):
     date = datetime.date.today().strftime("%A %d %B %Y")
 
     inner = ["<h2>🛰️ Morning brief · %s</h2>" % _esc(date)]
+    want_ai = getattr(args, "ai", False)
+    if want_ai:
+        from .ai.narrator import narrate
+        try:
+            n = narrate(b)
+            prio = "".join("<li>%s</li>" % _esc(x) for x in n.get("priorities", []))
+            inner.append("<div class=card><div class=sub>🧠 EBE · AI brief</div>"
+                         "<span class=big>%s</span><p>%s</p>%s</div>"
+                         % (_esc(n.get("headline", "")), _esc(n.get("narrative", "")),
+                            ("<ul>%s</ul>" % prio) if prio else ""))
+        except Exception as ex:
+            inner.append("<div class='card warn'>AI brief unavailable: %s</div>" % _esc(str(ex)))
+    else:
+        inner.append("<div class=card><a class='btn' href='/brief?profile=%s&ai=1'>🧠 Ask EBE to brief me</a> "
+                     "<span class=sub>Claude narrates the morning in plain English</span></div>"
+                     % urllib.parse.quote(prof))
     if not live:
         inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours with "
                      "<b>python -m ebe catalog --products data\\products.csv</b> to brief on real stock.</div>")
@@ -558,7 +574,7 @@ def render_brief(args):
             inner.append("<tr><td>%s<td class=r>%.0f%%<td class=r>%.0f%%<td><span class='pill %s'>%s</span></tr>"
                          % (_esc(e.item["name"]), e.composite * 100, e.moat * 100, e.verdict, e.verdict))
         inner.append("</table>")
-    return _shell(_ctx_from_args(args), "brief", "".join(inner), refresh=True)
+    return _shell(_ctx_from_args(args), "brief", "".join(inner), refresh=not want_ai)
 
 
 # ── REPRICE page (competitive pricing vs live market) ────────────────────────
@@ -776,6 +792,8 @@ def _req_args(base, query):
         a.fees = qs["fees"][0]
     if qs.get("strategy") and qs["strategy"][0] in ("undercut", "match", "premium"):
         a.strategy = qs["strategy"][0]
+    if qs.get("ai"):
+        a.ai = qs["ai"][0] in ("1", "true", "yes")
     if qs.get("capital"):
         try:
             a.capital = float(qs["capital"][0])

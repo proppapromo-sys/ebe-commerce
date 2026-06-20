@@ -579,6 +579,23 @@ def _brief(args):
     from . import brief as briefmod
     s = Store(_db_path(args))
     b = briefmod.compose(s, profile=args.profile or "generic", fee=PRESETS[args.fees])
+    if getattr(args, "ai", False):
+        from .ai.narrator import narrate
+        from .adapters.base import AdapterError
+        try:
+            n = narrate(b)
+            date = datetime.date.today().strftime("%A %d %B %Y")
+            print("\n══ EBE COMMAND · AI BRIEF · %s ══" % date)
+            print("\n%s %s\n" % (n.get("greeting", ""), n["headline"]))
+            print(n["narrative"])
+            if n.get("priorities"):
+                print("\nPriorities:")
+                for i, p in enumerate(n["priorities"], 1):
+                    print("  %d. %s" % (i, p))
+            print()
+            return
+        except AdapterError as e:
+            print("(AI brief unavailable: %s — falling back to the standard brief)\n" % e)
     print(briefmod.render_text(b, datetime.date.today().strftime("%A %d %B %Y")))
 
 
