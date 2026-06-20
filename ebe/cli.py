@@ -544,9 +544,12 @@ def _rebuy(args):
     print("\n══ EBE COMMAND · AUTO RE-BUY · %s ══" % mode)
     raised = autobuy.scan(s, auto=auto, budget=args.budget)
     total = sum(po["cash"] for po in raised)
+    import datetime
     for po in raised:
-        print("  🚚 PO#%-4d %-24s %5d units  $%8.2f   (%s)"
-              % (po["id"], po["name"][:24], po["qty"], po["cash"], po["reason"]))
+        eta = po.get("eta")
+        when = datetime.date.fromtimestamp(eta).strftime("%a %b %d") if eta else "?"
+        print("  🚚 PO#%-4d %-22s %5d units  $%8.2f   arrives ~%s (%dd lead)"
+              % (po["id"], po["name"][:22], po["qty"], po["cash"], when, po.get("lead_time_days") or 0))
     skipped = len(proposals) - len(raised)
     tail = "  · %d skipped (budget cap $%.0f)" % (skipped, args.budget) if skipped else ""
     print("  ── %d POs · $%.2f committed%s" % (len(raised), total, tail))
@@ -571,10 +574,13 @@ def _orders(args):
         pass
     pos = s.purchase_orders(status=args.status)
     label = args.status or "all"
+    import datetime
     print("\n══ PURCHASE ORDERS · %s (%d) ══" % (label, len(pos)))
     for po in pos:
-        print("  PO#%-4d %-10s %-22s %5d u  $%8.2f  %s"
-              % (po["id"], po["status"], po["name"][:22], po["qty"], po["cash"], po["reason"] or ""))
+        eta = po.get("eta")
+        when = datetime.date.fromtimestamp(eta).strftime("%b %d") if eta else "—"
+        print("  PO#%-4d %-9s %-20s %5d u  $%8.2f  ETA %-7s %s"
+              % (po["id"], po["status"], po["name"][:20], po["qty"], po["cash"], when, po.get("supplier") or ""))
 
 
 def _brief(args):

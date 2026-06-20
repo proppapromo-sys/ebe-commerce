@@ -62,9 +62,11 @@ def plan(store: Store, safety_days=10, target_cover_days=45) -> list:
         if offer:
             unit_cost = offer.get("unit_cost") or item["cost"]
             supplier = offer.get("supplier") or item.get("supplier")
+            lead = offer.get("lead_time_days") or item.get("lead_time_days") or 21
             qty = _round_to_pack(max(qty, offer.get("min_qty") or 1), offer.get("pack_size"))
         else:
             unit_cost, supplier = item["cost"], item.get("supplier")
+            lead = item.get("lead_time_days") or 21
         savings = round((item["cost"] - unit_cost) * qty, 2) if unit_cost < item["cost"] else 0.0
         n_bids = len(store.offers_for(item["sku"]))
 
@@ -73,7 +75,8 @@ def plan(store: Store, safety_days=10, target_cover_days=45) -> list:
             "unit_cost": unit_cost, "cash": round(qty * unit_cost, 2),
             "on_hand": item["on_hand"], "reorder_point": round(rp, 1),
             "cover_days": round(days_of_cover(item), 1), "supplier": supplier,
-            "savings": savings, "bids": n_bids,
+            "savings": savings, "bids": n_bids, "lead_time_days": int(lead),
+            "eta_days": int(lead),
             "reason": "cover %.0fd ≤ reorder point %.0f" % (days_of_cover(item), rp),
         })
     proposals.sort(key=lambda x: x["cover_days"])      # most urgent first
@@ -85,7 +88,8 @@ def raise_for(store: Store, sku, safety_days=10, target_cover_days=45, status="d
     for prop in plan(store, safety_days, target_cover_days):
         if prop["sku"] == sku:
             return store.create_po(prop["sku"], prop["qty"], prop["unit_cost"],
-                                   reason=prop["reason"], supplier=prop["supplier"], status=status)
+                                   reason=prop["reason"], supplier=prop["supplier"], status=status,
+                                   lead_time_days=prop.get("lead_time_days"))
     return None
 
 
@@ -100,7 +104,8 @@ def scan(store: Store, safety_days=10, target_cover_days=45, auto=False, budget=
         if budget is not None and spent + prop["cash"] > budget:
             continue
         po_id = store.create_po(prop["sku"], prop["qty"], prop["unit_cost"],
-                                reason=prop["reason"], supplier=prop["supplier"], status=status)
+                                reason=prop["reason"], supplier=prop["supplier"], status=status,
+                                lead_time_days=prop.get("lead_time_days"))
         spent += prop["cash"]
         raised.append(store.purchase_order(po_id))
     return raised

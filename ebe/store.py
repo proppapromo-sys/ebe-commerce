@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     supplier    TEXT,
     created_at  REAL NOT NULL DEFAULT 0,
     ordered_at  REAL,
-    received_at REAL
+    received_at REAL,
+    lead_time_days INTEGER NOT NULL DEFAULT 21,
+    eta         REAL
 );
 CREATE TABLE IF NOT EXISTS events (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +156,10 @@ class Store:
         for col, decl in (("asin", "TEXT"),):
             if col not in have:
                 self._cx.execute("ALTER TABLE products ADD COLUMN %s %s" % (col, decl))
+        pohave = {r["name"] for r in self._cx.execute("PRAGMA table_info(purchase_orders)")}
+        for col, decl in (("lead_time_days", "INTEGER NOT NULL DEFAULT 21"), ("eta", "REAL")):
+            if col not in pohave:
+                self._cx.execute("ALTER TABLE purchase_orders ADD COLUMN %s %s" % (col, decl))
 
     def close(self):
         self._cx.close()
@@ -217,14 +223,19 @@ class Store:
             "SELECT DISTINCT sku FROM purchase_orders WHERE status IN ('draft','ordered')")
         return {row["sku"] for row in cur.fetchall()}
 
-    def create_po(self, sku, qty, unit_cost, reason="", supplier=None, status="draft") -> int:
+    def create_po(self, sku, qty, unit_cost, reason="", supplier=None, status="draft",
+                  lead_time_days=None) -> int:
         qty = int(qty)
-        name = (self.product(sku) or {}).get("name", sku)
+        p = self.product(sku) or {}
+        name = p.get("name", sku)
+        lt = int(lead_time_days if lead_time_days is not None else (p.get("lead_time_days") or 21))
+        now = time.time()
+        eta = now + lt * 86400               # expected delivery = order date + supplier lead time
         cur = self._cx.execute(
-            "INSERT INTO purchase_orders (sku,name,qty,unit_cost,cash,status,reason,supplier,created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO purchase_orders (sku,name,qty,unit_cost,cash,status,reason,supplier,created_at,lead_time_days,eta)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (sku, name, qty, unit_cost, round(qty * unit_cost, 2), status, reason, supplier,
-             round(time.time(), 3)))
+             round(now, 3), lt, round(eta, 3)))
         self._log("po_" + status, sku, qty, reason)
         self._cx.commit()
         return cur.lastrowid
