@@ -12,3 +12,8 @@ venv/
 # EBE system-of-record databases (local)
 *.db
 ebe.db
+
+# EBE licensing — owner secret + client token (never commit)
+owner_private.key
+license.key
+ebe/license_pub.json

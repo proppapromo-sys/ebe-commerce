@@ -1106,10 +1106,37 @@ def _venue(args):
     engine.run(sales, menu, consumables, period_days=args.period, place=True)
 
 
+def _license(args):
+    """Licensing — owner mints tokens; anyone can check status."""
+    from . import license as lic
+    if args.keygen:
+        priv = lic.generate_keypair()
+        lic.save_keypair(priv)
+        print("🔑 EBE owner keypair generated.")
+        print("   private key → %s   ⚠ KEEP SECRET — never share or commit this" % lic.OWNER_KEY)
+        print("   public key  → %s   ship this file inside the client's copy of EBE" % lic.PUBLIC_KEY)
+        print("\n   You are now the owner — EBE runs free for you. Issue a client a license with:")
+        print("     python -m ebe license --issue \"Their Venue\" --days 30")
+        return
+    if args.issue:
+        priv = lic.load_private()
+        if not priv:
+            raise SystemExit("no owner key found — run `python -m ebe license --keygen` first")
+        token = lic.issue(args.issue, args.days, priv)
+        print("🎟  EBE license · %s · %d days\n" % (args.issue, args.days))
+        print(token)
+        print("\n   Send this token to the client. They activate it with:")
+        print("     setx EBE_LICENSE \"%s...\"   (or save it to a file named license.key)" % token[:14])
+        return
+    st = lic.status()
+    icon = {"owner": "👑", "licensed": "✅", "unlicensed": "⛔", "open": "🔓"}.get(st["state"], "•")
+    print("%s EBE license: %s — %s" % (icon, st["state"].upper(), st["msg"]))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1171,11 +1198,23 @@ def main(argv=None):
     ap.add_argument("--floor-roi", type=float, default=None, dest="floor_roi", help="reprice: minimum ROI after fees to defend (default 0.30)")
     ap.add_argument("--live", action="store_true", help="reprice: pull live competitor prices from Keepa (uses each SKU's asin)")
     ap.add_argument("--run", action="store_true", help="subs: process every subscription that's due (raise buy POs / book sells)")
+    ap.add_argument("--keygen", action="store_true", help="license: generate the owner keypair (run once)")
+    ap.add_argument("--issue", metavar="CLIENT", help="license: mint a license token for a client (owner only)")
+    ap.add_argument("--days", type=int, default=30, help="license: how many days the issued license is valid (default 30)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
         from .adapters.base import Budget, set_budget
         set_budget(Budget(args.max_calls))      # 🪙 cap outbound API spend this run
+
+    if args.branch == "license":
+        return _license(args)
+    # 🔒 the paywall: everything but `license` requires the owner key or a valid token
+    from .license import require, LicenseError
+    try:
+        require()
+    except LicenseError as e:
+        raise SystemExit(str(e))
 
     if args.branch == "check":
         return _check()
