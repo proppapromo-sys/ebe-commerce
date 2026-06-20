@@ -43,6 +43,9 @@ def compose(store, profile="generic", fee=None) -> dict:
     inv_value = sum((p.get("on_hand") or 0) * (p.get("cost") or 0) for p in products)
     top = sorted(proposals, key=lambda x: -x["cash"])[:3]
 
+    from . import subscriptions as subm
+    subs = subm.summarize(store)
+
     watch = []
     try:
         from .branches import scout
@@ -70,7 +73,7 @@ def compose(store, profile="generic", fee=None) -> dict:
     return dict(products=len(products), low=len(proposals), proposals=proposals, top=top,
                 cash_to_commit=cash_to_commit, drafts=len(drafts), draft_value=draft_value,
                 send_groups=len(send_groups), ordered=len(ordered), inbound_value=inbound_value,
-                inv_value=inv_value, watch=watch, move=move, cash=live_cash())
+                inv_value=inv_value, watch=watch, move=move, cash=live_cash(), subs=subs)
 
 
 def render_text(b, date_str="") -> str:
@@ -92,6 +95,10 @@ def render_text(b, date_str="") -> str:
         c = b["cash"]
         L.append("💰 CASH (Stripe)  $%.0f available · $%.0f revenue/30d (%d charge%s)"
                  % (c["available"], c["revenue30"], c["charges30"], "" if c["charges30"] == 1 else "s"))
+    sub = b.get("subs")
+    if sub and sub["active"]:
+        L.append("🔁 RECURRING  $%.0f MRR · $%.0f/mo committed buys · %d due now"
+                 % (sub["mrr_sell"], sub["mrr_buy"], sub["due_count"]))
     for e in b["watch"]:
         L.append("🧭 WATCH     %s — %s (edge %.0f%%, moat %.0f%%)"
                  % (e.item["name"][:28], e.verdict, e.composite * 100, e.moat * 100))

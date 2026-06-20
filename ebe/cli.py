@@ -597,6 +597,51 @@ def _suppliers(args):
         print("  %-22s lead %2dd  min $%-6.0f %s" % (r["name"][:22], r["lead_time_days"], r["min_order"], contact))
 
 
+def _subs(args):
+    """Subscriptions / standing orders — recurring buy & sell, with MRR and due processing."""
+    import time
+    from .store import Store
+    from . import subscriptions as subm
+    s = Store(_db_path(args))
+    if args.file:
+        import csv as _csv
+        now = time.time()
+        n = 0
+        with open(args.file, newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                sku = (row.get("sku") or "").strip()
+                if not sku:
+                    continue
+                first_in = float(row.get("first_in_days") or 0)
+                s.add_subscription(
+                    sku=sku, qty=int(float(row.get("qty") or 1)),
+                    cadence_days=int(float(row.get("cadence_days") or 30)),
+                    kind=(row.get("kind") or "buy").strip(),
+                    counterparty=(row.get("counterparty") or "").strip() or None,
+                    unit_price=float(row.get("unit_price") or 0),
+                    next_due=now + first_in * 86400, name=(row.get("name") or sku).strip())
+                n += 1
+        print("🔁 added %d subscription(s) from %s" % (n, args.file))
+    if getattr(args, "run", False):
+        actioned = subm.run_due(s)
+        for a in actioned:
+            if a["kind"] == "buy":
+                print("  🚚 standing order → PO#%d  %s ×%d  $%.0f" % (a["po"], a["sub"]["sku"], a["sub"]["qty"], a["cash"]))
+            else:
+                print("  💵 recurring sale  %s ×%d  $%.0f → %s" % (a["sub"]["sku"], a["sub"]["qty"], a["revenue"], a["sub"].get("counterparty") or "customer"))
+        if not actioned:
+            print("  nothing due right now.")
+    summ = subm.summarize(s)
+    print("\n══ EBE COMMAND · SUBSCRIPTIONS ══")
+    print("  %d active · MRR (sell) $%.0f/mo · committed buy $%.0f/mo · %d due now"
+          % (summ["active"], summ["mrr_sell"], summ["mrr_buy"], summ["due_count"]))
+    for sub in s.subscriptions():
+        days = max(0, (sub["next_due"] - time.time()) / 86400)
+        print("  %-4s %-18s ×%-4d every %3dd  $%6.2f/u  %-16s next in %.0fd"
+              % (sub["kind"], (sub["name"] or sub["sku"])[:18], sub["qty"], sub["cadence_days"],
+                 sub["unit_price"], (sub["counterparty"] or "")[:16], days))
+
+
 def _vendors(args):
     """Vendor bidding — load competing supplier offers and show who wins each SKU."""
     from .store import Store
@@ -781,8 +826,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -843,6 +888,7 @@ def main(argv=None):
     ap.add_argument("--strategy", help="reprice: undercut | match | premium (default undercut)")
     ap.add_argument("--floor-roi", type=float, default=None, dest="floor_roi", help="reprice: minimum ROI after fees to defend (default 0.30)")
     ap.add_argument("--live", action="store_true", help="reprice: pull live competitor prices from Keepa (uses each SKU's asin)")
+    ap.add_argument("--run", action="store_true", help="subs: process every subscription that's due (raise buy POs / book sells)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -884,6 +930,8 @@ def main(argv=None):
         return _suppliers(args)
     if args.branch == "vendors":
         return _vendors(args)
+    if args.branch == "subs":
+        return _subs(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":

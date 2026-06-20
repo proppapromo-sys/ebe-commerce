@@ -526,6 +526,15 @@ def render_brief(args):
             "<div class='metric'><div class=k>Charges · 30d</div><div class=v data-count='%d'>0</div></div>"
             "</div>" % (round(c["available"]), round(c["revenue30"]), c["charges30"]))
 
+    sub = b.get("subs")
+    if sub and sub["active"]:
+        inner.append(
+            "<div class=metrics>"
+            "<div class='metric go'><div class=k>Recurring revenue · MRR</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+            "<div class='metric'><div class=k>Committed buys · /mo</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+            "<div class='metric alert'><div class=k>Subscriptions due</div><div class=v data-count='%d'>0</div></div>"
+            "</div>" % (round(sub["mrr_sell"]), round(sub["mrr_buy"]), sub["due_count"]))
+
     inner.append("<div class=card><b>➡️ One move that matters today</b><br><span class=big>%s</span></div>" % _esc(b["move"]))
 
     actions = []

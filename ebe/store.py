@@ -81,9 +81,23 @@ CREATE TABLE IF NOT EXISTS vendor_offers (
     updated_at     REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (sku, supplier)
 );
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT,
+    sku          TEXT NOT NULL,
+    qty          INTEGER NOT NULL DEFAULT 1,
+    cadence_days INTEGER NOT NULL DEFAULT 30,
+    next_due     REAL NOT NULL DEFAULT 0,
+    kind         TEXT NOT NULL DEFAULT 'buy',     -- buy (standing order) | sell (recurring revenue)
+    counterparty TEXT,                            -- supplier (buy) or customer (sell)
+    unit_price   REAL NOT NULL DEFAULT 0,
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   REAL NOT NULL DEFAULT 0
+);
 """
 
 _OFFER_COLS = ("sku", "supplier", "unit_cost", "lead_time_days", "min_qty", "pack_size")
+_SUB_COLS = ("name", "sku", "qty", "cadence_days", "next_due", "kind", "counterparty", "unit_price")
 
 _SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order", "notes")
 
@@ -283,6 +297,43 @@ class Store:
         if not pool:
             return None
         return min(pool, key=lambda o: (o.get("unit_cost") or 0, o.get("lead_time_days") or 0))
+
+    # ---- subscriptions / standing orders -------------------------------------
+    def add_subscription(self, sku, qty, cadence_days, kind="buy", counterparty=None,
+                         unit_price=0.0, next_due=None, name=None) -> int:
+        now = time.time()
+        cur = self._cx.execute(
+            "INSERT INTO subscriptions (name,sku,qty,cadence_days,next_due,kind,counterparty,unit_price,active,created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,1,?)",
+            (name or sku, sku, int(qty), int(cadence_days),
+             float(next_due if next_due is not None else now), kind, counterparty,
+             float(unit_price), round(now, 3)))
+        self._cx.commit()
+        return cur.lastrowid
+
+    def subscriptions(self, active_only=True) -> list:
+        q = "SELECT * FROM subscriptions" + (" WHERE active=1" if active_only else "") + " ORDER BY next_due"
+        return [dict(r) for r in self._cx.execute(q).fetchall()]
+
+    def due_subscriptions(self, as_of=None) -> list:
+        as_of = time.time() if as_of is None else as_of
+        cur = self._cx.execute(
+            "SELECT * FROM subscriptions WHERE active=1 AND next_due<=? ORDER BY next_due", (as_of,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def advance_subscription(self, sub_id, as_of=None) -> None:
+        """Roll a fulfilled subscription forward by its cadence."""
+        row = self._cx.execute("SELECT cadence_days FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+        if not row:
+            return
+        base = time.time() if as_of is None else as_of
+        self._cx.execute("UPDATE subscriptions SET next_due=? WHERE id=?",
+                         (base + row["cadence_days"] * 86400, sub_id))
+        self._cx.commit()
+
+    def cancel_subscription(self, sub_id) -> None:
+        self._cx.execute("UPDATE subscriptions SET active=0 WHERE id=?", (sub_id,))
+        self._cx.commit()
 
     def record_sales(self, counts) -> int:
         """Bulk record sales from a {sku: units} mapping. Returns SKUs touched."""

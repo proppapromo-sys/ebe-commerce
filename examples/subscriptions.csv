@@ -1,0 +1,5 @@
+name,sku,qty,cadence_days,kind,counterparty,unit_price,first_in_days
+Charcoal standing order,M2·OS·Navy,200,14,buy,Hookah Wholesale Direct,6.40,0
+To-go boxes standing order,P1,500,30,buy,Generic Imports LLC,0.18,7
+Lounge A — weekly hookah supply,M2·OS·Navy,150,7,sell,Cloud9 Lounge,12.00,0
+Bar B — monthly cup plan,P1,1000,30,sell,Skyline Bar,0.45,3
