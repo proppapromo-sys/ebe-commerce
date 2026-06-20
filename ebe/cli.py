@@ -942,6 +942,41 @@ def _rank(args):
         print("    ── $%.0f committed → $%.0f/mo profit potential" % (plan["spent"], plan["monthly_profit"]))
 
 
+def _scan(args):
+    """Comb the market — sweep categories on Keepa, score, surface the best deals."""
+    from .adapters.keepa import discover_candidates
+    from .adapters.base import AdapterError
+    from .scanner import scan
+    from .profile import PROFILES
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    cats = [c.strip() for c in (args.category or "home,kitchen,health,sports").split(",") if c.strip()]
+
+    def fetch(category=None, **kw):
+        return discover_candidates(
+            category=category, min_monthly=args.min_sales, min_price=args.min_price,
+            max_price=args.max_price, max_sellers=args.max_sellers, limit=args.limit,
+            cost_ratio=args.cost_ratio)
+
+    print("\n══ EBE COMMAND · MARKET SCAN ══")
+    print("  combing %d categor(ies): %s · sales≥%d · $%g–$%g\n"
+          % (len(cats), ", ".join(cats), args.min_sales, args.min_price, args.max_price))
+    try:
+        deals = scan(fetch, cats, prof, limit=args.limit)
+    except AdapterError as e:
+        raise SystemExit("scan failed: %s\n(run `python -m ebe check`)" % e)
+    if not deals:
+        print("  no opportunities cleared — loosen the filters.")
+        return
+    print("  %-30s %-9s %6s %5s %-7s  %s" % ("product", "channel", "margin", "EDGE", "verdict", "$/mo"))
+    for d in deals:
+        print("  %-30s %-9s %5.0f%% %4.0f%% %-7s  $%.0f"
+              % (d["name"][:30], d["best_channel"], d["margin"] * 100, d["edge"] * 100, d["verdict"], d["monthly_profit"]))
+    if getattr(args, "out", None):
+        from .sourcing_rank import write_candidates
+        n = write_candidates(args.out, deals)
+        print("\n  📝 wrote %d to %s → quote these on Alibaba, then `python -m ebe rank`" % (n, args.out))
+
+
 def _bundle(args):
     """Define kits and see their margin across channels (cost = sum of components)."""
     from .store import Store
@@ -1073,8 +1108,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1202,6 +1237,8 @@ def main(argv=None):
         return _channels(args)
     if args.branch == "bundle":
         return _bundle(args)
+    if args.branch == "scan":
+        return _scan(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":
