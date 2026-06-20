@@ -66,6 +66,40 @@ def sync_stock(store: Store, client, prices=False) -> dict:
     return {"updated": updated, "unknown": unknown, "priced": priced}
 
 
+def channel_client(name, region="na", marketplace="us"):
+    """Build a sync client for a named channel."""
+    from .adapters.base import AdapterError
+    if name == "amazon":
+        from .adapters.amazon_spapi import SpApiClient
+        return SpApiClient(region=region, marketplace=marketplace)
+    if name == "shopify":
+        from .adapters.shopify import ShopifyClient
+        return ShopifyClient()
+    raise AdapterError("unknown sync channel %r" % name)
+
+
+def configured_channels():
+    """Stock channels whose keys are present in .env (so sync --all skips the rest)."""
+    from .adapters import config
+    out = []
+    for name in ("amazon", "shopify"):
+        keys = config.NEEDS.get(name, [])
+        if keys and not config.require(keys):
+            out.append(name)
+    return out
+
+
+def sync_all(store, prices=False, region="na", marketplace="us"):
+    """Pull stock from every configured channel. Returns {channel: result-or-error}."""
+    results = {}
+    for name in configured_channels():
+        try:
+            results[name] = sync_stock(store, channel_client(name, region, marketplace), prices=prices)
+        except Exception as e:
+            results[name] = {"error": str(e)}
+    return results
+
+
 def _price_of(row):
     """Best-effort dig of (sku, amount) out of a Product-Pricing payload row."""
     sku = row.get("SellerSKU") or row.get("sellerSku") or row.get("ASIN")

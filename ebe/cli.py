@@ -1075,12 +1075,29 @@ def _audit(args):
 def _sync(args):
     """Pull live channel stock (Amazon/Shopify) into the database, then show what moved."""
     from .store import Store
-    from .sync import sync_stock
+    from .sync import sync_stock, sync_all, configured_channels
     s = Store(_db_path(args))
     if not s.products():
         raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    prices = getattr(args, "with_prices", False)
+    if (getattr(args, "channel", None) or "").lower() == "all":
+        chans = configured_channels()
+        print("\n══ EBE COMMAND · SYNC ALL CHANNELS ══")
+        if not chans:
+            print("  no channels configured — add Amazon/Shopify keys to .env (python -m ebe connections)")
+            return
+        res = sync_all(s, prices=prices, region=args.region or "na", marketplace=args.marketplace or "us")
+        total = 0
+        for name, r in res.items():
+            if "error" in r:
+                print("  ✕ %-9s %s" % (name, r["error"]))
+            else:
+                total += len(r["updated"])
+                print("  ● %-9s %d SKUs updated · %d unknown" % (name, len(r["updated"]), len(r["unknown"])))
+        print("  ── %d SKUs synced across %d channel(s). Now:  python -m ebe rebuy" % (total, len(res)))
+        return
     label, client = _channel_client(args)
-    res = sync_stock(s, client, prices=getattr(args, "with_prices", False))
+    res = sync_stock(s, client, prices=prices)
     print("\n══ EBE COMMAND · LIVE STOCK SYNC (%s) ══" % label)
     for sku, units in res["updated"]:
         print("  ✓ %-24s on_hand → %d" % (sku[:24], units))
