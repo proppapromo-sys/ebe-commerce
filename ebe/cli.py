@@ -636,6 +636,38 @@ def _po(args):
         print(doc)
 
 
+def _reprice(args):
+    """Competitive repricing — position each SKU vs the live market, never below floor."""
+    from .store import Store
+    from .repricer import reprice_catalog
+    s = Store(_db_path(args))
+    prods = s.products()
+    if not prods:
+        raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    prices = {}
+    if args.alt:
+        import csv as _csv
+        with open(args.alt, newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                sku = (row.get("sku") or row.get("identifier") or "").strip()
+                try:
+                    price = float(row.get("price") or 0)
+                except ValueError:
+                    price = 0
+                if sku and price > 0:
+                    prices.setdefault(sku, []).append(price)
+    strategy = args.strategy or "undercut"
+    floor_roi = args.floor_roi if args.floor_roi is not None else 0.30
+    recs = reprice_catalog(prods, prices, PRESETS[args.fees], floor_roi=floor_roi, strategy=strategy)
+    print("\n══ EBE COMMAND · REPRICE (%s · floor ROI %.0f%% · fees %s) ══"
+          % (strategy, floor_roi * 100, PRESETS[args.fees].name))
+    print("  %-22s %8s %8s %8s %6s  %s" % ("SKU", "now", "→ rec", "floor", "ROI", "why"))
+    for r in recs:
+        flag = "⚓" if r["at_floor"] else ("↑" if r["move"] > 0 else ("↓" if r["move"] < 0 else "="))
+        print("  %-22s %8.2f %8.2f %8.2f %5.0f%% %s %s"
+              % (r["name"][:22], r["current"], r["recommended"], r["floor"], r["roi"] * 100, flag, r["reason"]))
+
+
 def _connections(args):
     """Show every integration: what it does, whether it's configured, and where to sign up."""
     from .adapters import config
@@ -706,8 +738,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -765,6 +797,8 @@ def main(argv=None):
     ap.add_argument("--units", type=int, help="sell: units sold for --id SKU (drops on-hand stock)")
     ap.add_argument("--channel", help="sync: which channel to pull from (amazon|shopify; default amazon)")
     ap.add_argument("--square", action="store_true", help="venue: pull real sales from Square POS (needs SQUARE_TOKEN)")
+    ap.add_argument("--strategy", help="reprice: undercut | match | premium (default undercut)")
+    ap.add_argument("--floor-roi", type=float, default=None, dest="floor_roi", help="reprice: minimum ROI after fees to defend (default 0.30)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -810,6 +844,8 @@ def main(argv=None):
         return _po(args)
     if args.branch == "brief":
         return _brief(args)
+    if args.branch == "reprice":
+        return _reprice(args)
     if args.branch == "sync":
         from .adapters.base import AdapterError
         try:
