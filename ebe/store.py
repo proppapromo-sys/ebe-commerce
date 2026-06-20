@@ -417,6 +417,22 @@ class Store:
         self._cx.execute("UPDATE subscriptions SET active=0 WHERE id=?", (sub_id,))
         self._cx.commit()
 
+    def record_count(self, sku, counted):
+        """Reconcile a physical count against expected on-hand. Logs the variance as a
+        'count' event (negative = shrinkage) and sets stock to the counted truth."""
+        p = self.product(sku)
+        if not p:
+            return None
+        expected = p["on_hand"]
+        counted = int(counted)
+        variance = counted - expected
+        self._cx.execute("UPDATE products SET on_hand=?, updated_at=? WHERE sku=?",
+                         (counted, round(time.time(), 3), sku))
+        self._log("count", sku, variance, "expected %d counted %d" % (expected, counted))
+        self._cx.commit()
+        return {"sku": sku, "name": p["name"], "expected": expected, "counted": counted,
+                "variance": variance, "cost": p.get("cost") or 0}
+
     def record_sales(self, counts) -> int:
         """Bulk record sales from a {sku: units} mapping. Returns SKUs touched."""
         n = 0

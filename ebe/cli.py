@@ -912,6 +912,48 @@ def _channel_client(args):
     return "Amazon SP-API", SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
 
 
+def _count(args):
+    """Record a physical count — reconciles to truth and flags shrinkage."""
+    from .store import Store
+    from . import shrinkage
+    if not args.id or args.units is None:
+        raise SystemExit("usage: ebe count --id SKU --units COUNTED")
+    s = Store(_db_path(args))
+    res = shrinkage.record_count(s, args.id, args.units)
+    if not res:
+        raise SystemExit("unknown SKU: %s" % args.id)
+    print("\n══ EBE COMMAND · COUNT · %s ══" % res["name"])
+    print("  expected %d · counted %d · variance %+d" % (res["expected"], res["counted"], res["variance"]))
+    if res["variance"] < 0:
+        print("  ⚠ shrinkage: %d units · $%.2f lost" % (-res["variance"], -res["value"]))
+    elif res["variance"] > 0:
+        print("  + found %d extra units (recount / late receipt)" % res["variance"])
+    else:
+        print("  ✓ counts match — no shrinkage")
+
+
+def _audit(args):
+    """Inventory health — stockout risk + shrinkage report."""
+    from .store import Store
+    from . import shrinkage
+    s = Store(_db_path(args))
+    summ = shrinkage.summarize(s)
+    print("\n══ EBE COMMAND · AUDIT ══")
+    print("  %d SKU(s) at stockout risk (%d will run dry before re-buy lands) · $%.2f shrinkage logged"
+          % (summ["at_risk"], summ["stockout_count"], summ["shrink_value"]))
+    if summ["risk"]:
+        print("\n  ⏳ stockout risk (cover vs lead time):")
+        print("    %-22s %8s %8s %8s  %s" % ("SKU", "on_hand", "days", "lead", "verdict"))
+        for r in summ["risk"]:
+            flag = "WILL STOCK OUT" if r["stockout"] else "tight"
+            print("    %-22s %8d %8.0f %8d  %s" % (r["name"][:22], r["on_hand"], r["days_left"], r["lead_time"], flag))
+    if summ["shrink"]["by_sku"]:
+        print("\n  🩸 shrinkage by SKU:")
+        for b in summ["shrink"]["by_sku"]:
+            print("    %-22s %5d units  $%.2f" % (b["name"][:22], b["units"], b["value"]))
+    print("\n  record a count:  python -m ebe count --id SKU --units COUNTED")
+
+
 def _sync(args):
     """Pull live channel stock (Amazon/Shopify) into the database, then show what moved."""
     from .store import Store
@@ -954,8 +996,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1073,6 +1115,10 @@ def main(argv=None):
         return _customers(args)
     if args.branch == "statement":
         return _statement(args)
+    if args.branch == "count":
+        return _count(args)
+    if args.branch == "audit":
+        return _audit(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":

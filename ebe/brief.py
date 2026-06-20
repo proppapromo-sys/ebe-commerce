@@ -50,6 +50,9 @@ def compose(store, profile="generic", fee=None) -> dict:
     ledmod.reconcile(store)
     led = ledmod.summarize(store)
 
+    from . import shrinkage as shrinkmod
+    audit = shrinkmod.summarize(store)
+
     watch = []
     try:
         from .branches import scout
@@ -77,7 +80,8 @@ def compose(store, profile="generic", fee=None) -> dict:
     return dict(products=len(products), low=len(proposals), proposals=proposals, top=top,
                 cash_to_commit=cash_to_commit, drafts=len(drafts), draft_value=draft_value,
                 send_groups=len(send_groups), ordered=len(ordered), inbound_value=inbound_value,
-                inv_value=inv_value, watch=watch, move=move, cash=live_cash(), subs=subs, led=led)
+                inv_value=inv_value, watch=watch, move=move, cash=live_cash(), subs=subs, led=led,
+                audit=audit)
 
 
 def render_text(b, date_str="") -> str:
@@ -108,6 +112,14 @@ def render_text(b, date_str="") -> str:
         tail = " · ⚠ $%.0f overdue" % ld["overdue_total"] if ld["overdue_total"] else ""
         L.append("📒 LEDGER  A/R $%.0f · A/P $%.0f · net $%.0f%s"
                  % (ld["ar"], ld["ap"], ld["net"], tail))
+    au = b.get("audit")
+    if au and (au["stockout_count"] or au["shrink_value"]):
+        bits = []
+        if au["stockout_count"]:
+            bits.append("%d will stock out before re-buy" % au["stockout_count"])
+        if au["shrink_value"]:
+            bits.append("$%.0f shrinkage" % au["shrink_value"])
+        L.append("🩸 LEAKS  " + " · ".join(bits))
     for e in b["watch"]:
         L.append("🧭 WATCH     %s — %s (edge %.0f%%, moat %.0f%%)"
                  % (e.item["name"][:28], e.verdict, e.composite * 100, e.moat * 100))
