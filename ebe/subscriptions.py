@@ -66,7 +66,9 @@ def run_due(store, as_of=None):
             revenue = round(sub["qty"] * (sub.get("unit_price") or 0), 2)
             store._log("subscription_sell", sub["sku"], sub["qty"],
                        "%s · $%.2f" % (sub.get("counterparty") or "", revenue))
-            actioned.append({"kind": "sell", "sub": sub, "revenue": revenue})
+            from .ledger import bill_subscription
+            inv = bill_subscription(store, sub, revenue, sub["next_due"])
+            actioned.append({"kind": "sell", "sub": sub, "revenue": revenue, "invoice": inv})
         store.advance_subscription(sub["id"], as_of)
     if actioned:
         store._cx.commit()

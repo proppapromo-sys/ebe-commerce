@@ -54,6 +54,10 @@ def facts(b) -> str:
     if s and s["active"]:
         L.append("Recurring: $%.0f MRR, $%.0f/mo committed buys, %d subscriptions due now."
                  % (s["mrr_sell"], s["mrr_buy"], s["due_count"]))
+    ld = b.get("led")
+    if ld and (ld["ar"] or ld["ap"]):
+        L.append("Ledger: $%.0f receivable, $%.0f payable, net $%.0f, $%.0f overdue."
+                 % (ld["ar"], ld["ap"], ld["net"], ld["overdue_total"]))
     for e in b.get("watch", []):
         L.append("Opportunity on the radar: %s — %s (edge %.0f%%, moat %.0f%%)."
                  % (e.item["name"], e.verdict, e.composite * 100, e.moat * 100))

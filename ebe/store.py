@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS vendor_offers (
     updated_at     REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (sku, supplier)
 );
+CREATE TABLE IF NOT EXISTS invoices (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    party      TEXT,
+    kind       TEXT NOT NULL DEFAULT 'AR',       -- AR (they owe you) | AP (you owe them)
+    amount     REAL NOT NULL DEFAULT 0,
+    status     TEXT NOT NULL DEFAULT 'open',      -- open | paid
+    due_at     REAL NOT NULL DEFAULT 0,
+    ref        TEXT,                              -- e.g. 'sub:3:...' or 'po:12' (idempotency key)
+    memo       TEXT,
+    created_at REAL NOT NULL DEFAULT 0,
+    paid_at    REAL
+);
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT,
@@ -297,6 +309,40 @@ class Store:
         if not pool:
             return None
         return min(pool, key=lambda o: (o.get("unit_cost") or 0, o.get("lead_time_days") or 0))
+
+    # ---- ledger (accounts receivable / payable) ------------------------------
+    def create_invoice(self, party, amount, kind="AR", due_days=14, ref=None, memo=None):
+        """Open an invoice. If `ref` is given and already exists, do nothing (idempotent)."""
+        if ref and self.invoice_by_ref(ref):
+            return None
+        now = time.time()
+        cur = self._cx.execute(
+            "INSERT INTO invoices (party,kind,amount,status,due_at,ref,memo,created_at)"
+            " VALUES (?,?,?,'open',?,?,?,?)",
+            (party, kind, round(float(amount), 2), now + due_days * 86400, ref, memo, round(now, 3)))
+        self._cx.commit()
+        return cur.lastrowid
+
+    def invoice_by_ref(self, ref):
+        row = self._cx.execute("SELECT * FROM invoices WHERE ref=?", (ref,)).fetchone()
+        return dict(row) if row else None
+
+    def invoices(self, status=None, kind=None) -> list:
+        q, params = "SELECT * FROM invoices", []
+        where = []
+        if status:
+            where.append("status=?"); params.append(status)
+        if kind:
+            where.append("kind=?"); params.append(kind)
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        q += " ORDER BY due_at"
+        return [dict(r) for r in self._cx.execute(q, params).fetchall()]
+
+    def mark_invoice_paid(self, inv_id) -> None:
+        self._cx.execute("UPDATE invoices SET status='paid', paid_at=? WHERE id=?",
+                         (round(time.time(), 3), inv_id))
+        self._cx.commit()
 
     # ---- subscriptions / standing orders -------------------------------------
     def add_subscription(self, sku, qty, cadence_days, kind="buy", counterparty=None,

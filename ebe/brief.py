@@ -46,6 +46,10 @@ def compose(store, profile="generic", fee=None) -> dict:
     from . import subscriptions as subm
     subs = subm.summarize(store)
 
+    from . import ledger as ledmod
+    ledmod.reconcile(store)
+    led = ledmod.summarize(store)
+
     watch = []
     try:
         from .branches import scout
@@ -73,7 +77,7 @@ def compose(store, profile="generic", fee=None) -> dict:
     return dict(products=len(products), low=len(proposals), proposals=proposals, top=top,
                 cash_to_commit=cash_to_commit, drafts=len(drafts), draft_value=draft_value,
                 send_groups=len(send_groups), ordered=len(ordered), inbound_value=inbound_value,
-                inv_value=inv_value, watch=watch, move=move, cash=live_cash(), subs=subs)
+                inv_value=inv_value, watch=watch, move=move, cash=live_cash(), subs=subs, led=led)
 
 
 def render_text(b, date_str="") -> str:
@@ -99,6 +103,11 @@ def render_text(b, date_str="") -> str:
     if sub and sub["active"]:
         L.append("🔁 RECURRING  $%.0f MRR · $%.0f/mo committed buys · %d due now"
                  % (sub["mrr_sell"], sub["mrr_buy"], sub["due_count"]))
+    ld = b.get("led")
+    if ld and (ld["ar"] or ld["ap"]):
+        tail = " · ⚠ $%.0f overdue" % ld["overdue_total"] if ld["overdue_total"] else ""
+        L.append("📒 LEDGER  A/R $%.0f · A/P $%.0f · net $%.0f%s"
+                 % (ld["ar"], ld["ap"], ld["net"], tail))
     for e in b["watch"]:
         L.append("🧭 WATCH     %s — %s (edge %.0f%%, moat %.0f%%)"
                  % (e.item["name"][:28], e.verdict, e.composite * 100, e.moat * 100))

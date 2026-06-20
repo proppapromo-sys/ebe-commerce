@@ -614,6 +614,39 @@ def _suppliers(args):
         print("  %-22s lead %2dd  min $%-6.0f %s" % (r["name"][:22], r["lead_time_days"], r["min_order"], contact))
 
 
+def _ledger(args):
+    """Accounts receivable / payable — who owes you, who you owe, net position."""
+    import time
+    from .store import Store
+    from . import ledger as led
+    s = Store(_db_path(args))
+    if args.id and (args.win or args.score is not None):
+        s.mark_invoice_paid(int(args.id))
+        print("✅ invoice #%s marked paid" % args.id)
+    n = led.reconcile(s)                       # mirror open POs into payables
+    summ = led.summarize(s)
+    print("\n══ EBE COMMAND · LEDGER ══")
+    if n:
+        print("  (reconciled %d new payable(s) from open POs)" % n)
+    print("  A/R owed to you  $%-10.2f (%d open)" % (summ["ar"], summ["ar_count"]))
+    print("  A/P you owe      $%-10.2f (%d open)" % (summ["ap"], summ["ap_count"]))
+    print("  NET position     $%-10.2f" % summ["net"])
+    if summ["overdue"]:
+        print("  ⚠ overdue: $%.2f across %d invoice(s)" % (summ["overdue_total"], len(summ["overdue"])))
+    print("\n  by party:")
+    for party, b in sorted(summ["by_party"].items(), key=lambda kv: -(kv[1]["AR"] + kv[1]["AP"])):
+        print("    %-22s A/R $%-9.2f A/P $%-9.2f" % (party[:22], b["AR"], b["AP"]))
+    open_inv = s.invoices(status="open")
+    if open_inv:
+        print("\n  open invoices:")
+        for i in open_inv:
+            days = (i["due_at"] - time.time()) / 86400
+            due = "OVERDUE" if days < 0 else "in %.0fd" % days
+            print("    #%-4d %-3s $%-9.2f %-20s %-8s %s"
+                  % (i["id"], i["kind"], i["amount"], (i["party"] or "")[:20], due, i.get("memo") or ""))
+    print("\n  mark paid:  python -m ebe ledger --id N --win")
+
+
 def _subs(args):
     """Subscriptions / standing orders — recurring buy & sell, with MRR and due processing."""
     import time
@@ -843,8 +876,8 @@ def _venue(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs"),
-                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "check", "connections", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger"),
+                    help="a branch, or: command / forecast / dashboard / check / connections / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -949,6 +982,8 @@ def main(argv=None):
         return _vendors(args)
     if args.branch == "subs":
         return _subs(args)
+    if args.branch == "ledger":
+        return _ledger(args)
     if args.branch == "sell":
         return _sell(args)
     if args.branch == "po":
