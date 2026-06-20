@@ -113,6 +113,17 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS bundles (
+    sku   TEXT PRIMARY KEY,
+    name  TEXT,
+    price REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS bundle_items (
+    bundle_sku    TEXT NOT NULL,
+    component_sku TEXT NOT NULL,
+    qty           INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (bundle_sku, component_sku)
+);
 """
 
 _OFFER_COLS = ("sku", "supplier", "unit_cost", "lead_time_days", "min_qty", "pack_size")
@@ -432,6 +443,62 @@ class Store:
         self._cx.commit()
         return {"sku": sku, "name": p["name"], "expected": expected, "counted": counted,
                 "variance": variance, "cost": p.get("cost") or 0}
+
+    # ---- bundles / kits ------------------------------------------------------
+    def define_bundle(self, sku, name, price, components) -> str:
+        """Create/replace a bundle: components is [(component_sku, qty), ...]."""
+        self._cx.execute("INSERT INTO bundles (sku,name,price) VALUES (?,?,?) "
+                         "ON CONFLICT(sku) DO UPDATE SET name=excluded.name, price=excluded.price",
+                         (sku, name or sku, float(price)))
+        self._cx.execute("DELETE FROM bundle_items WHERE bundle_sku=?", (sku,))
+        for comp, qty in components:
+            self._cx.execute("INSERT INTO bundle_items (bundle_sku,component_sku,qty) VALUES (?,?,?)",
+                             (sku, comp, int(qty)))
+        self._cx.commit()
+        return sku
+
+    def bundle_components(self, sku) -> list:
+        cur = self._cx.execute("SELECT * FROM bundle_items WHERE bundle_sku=?", (sku,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def bundle_cost(self, sku) -> float:
+        """Landed cost of a bundle = sum of component costs × quantities."""
+        total = 0.0
+        for it in self.bundle_components(sku):
+            p = self.product(it["component_sku"])
+            if p:
+                total += (p.get("cost") or 0) * it["qty"]
+        return round(total, 2)
+
+    def bundles(self) -> list:
+        out = []
+        for r in self._cx.execute("SELECT * FROM bundles ORDER BY sku").fetchall():
+            b = dict(r)
+            b["components"] = self.bundle_components(b["sku"])
+            b["cost"] = self.bundle_cost(b["sku"])
+            out.append(b)
+        return out
+
+    def bundle(self, sku):
+        row = self._cx.execute("SELECT * FROM bundles WHERE sku=?", (sku,)).fetchone()
+        if not row:
+            return None
+        b = dict(row)
+        b["components"] = self.bundle_components(sku)
+        b["cost"] = self.bundle_cost(sku)
+        return b
+
+    def sell_bundle(self, sku, n=1) -> dict:
+        """Selling a bundle consumes each component's stock. Returns what was drawn down."""
+        drawn = []
+        for it in self.bundle_components(sku):
+            units = it["qty"] * int(n)
+            if self.product(it["component_sku"]):
+                self.record_sale(it["component_sku"], units)
+                drawn.append((it["component_sku"], units))
+        self._log("bundle_sale", sku, int(n))
+        self._cx.commit()
+        return {"bundle": sku, "n": int(n), "drawn": drawn}
 
     def record_sales(self, counts) -> int:
         """Bulk record sales from a {sku: units} mapping. Returns SKUs touched."""
