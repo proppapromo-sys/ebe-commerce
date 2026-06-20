@@ -18,7 +18,7 @@ import http.cookies
 import os
 import types
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import dashboard, tenancy
 
@@ -76,9 +76,15 @@ def _locked_page(tn, tid):
 
 def serve(args):
     port = getattr(args, "port", None) or 8080
-    tn = tenancy.Tenants()
 
     class H(BaseHTTPRequestHandler):
+        @property
+        def tn(self):
+            # a fresh control-DB connection per request (ThreadingHTTPServer-safe)
+            if not getattr(self, "_tn", None):
+                self._tn = tenancy.Tenants()
+            return self._tn
+
         def _send(self, body, code=200, headers=None):
             body = body.encode("utf-8") if isinstance(body, str) else body
             self.send_response(code)
@@ -108,7 +114,7 @@ def serve(args):
             g = lambda k: (form.get(k) or [""])[0]
             if path == "/login":
                 tid = g("id").strip().lower()
-                if tn.authenticate(tid, g("pw")):
+                if self.tn.authenticate(tid, g("pw")):
                     self._redirect("/", "ebe_sess=%s; HttpOnly; Path=/; Max-Age=86400" % _sign(tid))
                 else:
                     self._send(_login_page("Wrong venue ID or password."))
@@ -123,13 +129,13 @@ def serve(args):
                 act = g("act")
                 tid = g("id").strip().lower()
                 if act == "create" and tid:
-                    tn.create_tenant(tid, g("name") or tid, g("pw") or "changeme", days=int(g("days") or 30))
+                    self.tn.create_tenant(tid, g("name") or tid, g("pw") or "changeme", days=int(g("days") or 30))
                 elif act == "renew":
-                    tn.renew(tid, days=int(g("days") or 30))
+                    self.tn.renew(tid, days=int(g("days") or 30))
                 elif act == "suspend":
-                    tn.suspend(tid)
+                    self.tn.suspend(tid)
                 elif act == "resume":
-                    tn.resume(tid)
+                    self.tn.resume(tid)
                 self._redirect("/admin")
                 return
             self._send(_page("?", "<div class=card>bad request</div>"), 400)
@@ -137,6 +143,8 @@ def serve(args):
         def do_GET(self):
             path, _, query = self.path.partition("?")
             qs = urllib.parse.parse_qs(query)
+            if path == "/health":                       # uptime probe — no auth
+                self._send("ok"); return
             if path == "/login":
                 self._send(_login_page()); return
             if path == "/logout":
@@ -145,12 +153,12 @@ def serve(args):
                 self._admin(); return
 
             tid = self._session_tenant()
-            if not tid or not tn.tenant(tid):
+            if not tid or not self.tn.tenant(tid):
                 self._redirect("/login"); return
-            if not tn.is_entitled(tid):                     # 🔒 server-side subscription gate
-                self._send(_locked_page(tn, tid), 402); return
+            if not self.tn.is_entitled(tid):                     # 🔒 server-side subscription gate
+                self._send(_locked_page(self.tn, tid), 402); return
 
-            a = _tenant_args(tn.tenant(tid), qs)
+            a = _tenant_args(self.tn.tenant(tid), qs)
             try:
                 body = self._tenant_page(path, a, qs)
             except Exception as ex:
@@ -190,7 +198,7 @@ def serve(args):
                                  "<input name=pw type=password placeholder='owner password'> <button>Enter</button></form>"))
                 return
             rows = []
-            for t in tn.list_tenants():
+            for t in self.tn.list_tenants():
                 rows.append("<tr><td>%s<td>%s<td>%s<td>"
                             "<form method=post action='/admin/action' style='display:inline'>"
                             "<input type=hidden name=id value='%s'><input type=hidden name=act value='renew'>"
@@ -202,7 +210,7 @@ def serve(args):
                             "<input type=hidden name=id value='%s'><input type=hidden name=act value='resume'>"
                             "<button>resume</button></form>"
                             % (dashboard._esc(t["id"]), dashboard._esc(t["name"]),
-                               dashboard._esc(tn.status_line(t["id"])),
+                               dashboard._esc(self.tn.status_line(t["id"])),
                                dashboard._esc(t["id"]), dashboard._esc(t["id"]), dashboard._esc(t["id"])))
             create = ("<h2>New tenant</h2><form class=card method=post action='/admin/action'>"
                       "<input type=hidden name=act value='create'>"
@@ -216,8 +224,9 @@ def serve(args):
         def log_message(self, *a):
             pass
 
-    print("EBE HOST (multi-tenant) → http://127.0.0.1:%d   (/login · /admin)" % port)
-    srv = HTTPServer(("0.0.0.0", port), H)
+    print("EBE HOST (multi-tenant) → http://0.0.0.0:%d   (/login · /admin · /health)" % port)
+    srv = ThreadingHTTPServer(("0.0.0.0", port), H)
+    srv.daemon_threads = True
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
