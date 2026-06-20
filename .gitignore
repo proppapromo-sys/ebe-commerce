@@ -21,3 +21,6 @@ ebe/license_pub.json
 # EBE hosted SaaS — control DB + per-tenant data (never commit)
 ebe_tenants.db
 tenants/
+
+# EBE delivery artifacts — git bundles sent to the user, not source
+*.bundle
