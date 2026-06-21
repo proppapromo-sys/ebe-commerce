@@ -1186,6 +1186,26 @@ def _add(args):
     print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
 
 
+def _report(args):
+    """AI executive report — fuses the ops brief + catalog score into a written rundown."""
+    from .store import Store
+    from . import report as reportmod
+    from .ai.client import available
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — run `python -m ebe add ...` or `import` first")
+    if not available():
+        raise SystemExit("AI report needs ANTHROPIC_API_KEY + the anthropic SDK "
+                         "(run `python -m ebe check`). For numbers-only, use: python -m ebe brief")
+    fee = PRESETS[args.fees]
+    data = reportmod.compose(s, profile=args.profile or "generic", fee=fee)
+    try:
+        rep = reportmod.write(data)
+    except Exception as e:
+        raise SystemExit("report failed: %s" % e)
+    print(reportmod.render_text(rep))
+
+
 def _score(args):
     """Score the catalog by true edge + margin-after-fees — what to push, what to drop."""
     from .store import Store
@@ -1375,8 +1395,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1568,6 +1588,8 @@ def main(argv=None):
         return _import(args)
     if args.branch == "score":
         return _score(args)
+    if args.branch == "report":
+        return _report(args)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:
