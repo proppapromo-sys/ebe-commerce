@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-dashboard.py — EBE Command, a working web interface with a JARVIS-style HUD.
+dashboard.py — EBE Command, a working web interface with an EBE Orb-style HUD.
 Pure stdlib (http.server), zero deps; all motion is CSS + a few lines of vanilla JS.
 
   python -m ebe dashboard            # then open http://127.0.0.1:8765

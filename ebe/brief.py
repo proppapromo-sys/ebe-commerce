@@ -85,7 +85,7 @@ def compose(store, profile="generic", fee=None) -> dict:
 
 
 def render_text(b, date_str="") -> str:
-    """JARVIS-style terminal rundown."""
+    """EBE Orb-style terminal rundown."""
     L = []
     head = "══ EBE COMMAND · MORNING BRIEF" + (" · %s" % date_str if date_str else "") + " ══"
     L.append("\n" + head)
