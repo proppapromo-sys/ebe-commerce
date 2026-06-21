@@ -27,6 +27,12 @@ class DashboardCatalogTests(unittest.TestCase):
         self.assertIn("Alpha", html)
         self.assertIn("/catalog-add", html)        # the add form is present
 
+    def test_header_shows_ebe_orb_branding(self):
+        html = d.render_catalog(self.a, "")
+        self.assertIn("EBE ORB ONLINE", html)
+        self.assertIn("orbname", html)              # the orb identity chip is rendered
+        self.assertNotIn("JARVIS", html.upper().replace("EBE ORB", ""))
+
     def test_add_handler_creates(self):
         msg = d._do_catalog_add(self.a, {"sku": ["B"], "name": ["Beta"],
                                          "cost": ["3"], "sell": ["12"]})

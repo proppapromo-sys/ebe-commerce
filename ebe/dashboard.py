@@ -67,10 +67,17 @@ body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
   -webkit-backdrop-filter:blur(13px);backdrop-filter:blur(13px);border-bottom:1px solid var(--brd);}
 .brand{display:flex;align-items:center;gap:13px;font:700 18px/1 var(--hud);letter-spacing:.16em;
   color:#eaf8ff;text-shadow:0 0 20px rgba(57,230,255,.4)}
-.brand .core{width:14px;height:14px;border-radius:50%;
+.brand .core{position:relative;width:16px;height:16px;border-radius:50%;
   background:radial-gradient(circle at 32% 30%,#cffbff,#39e6ff 46%,#0c7d9e);
   box-shadow:0 0 12px var(--cyan),0 0 30px rgba(57,230,255,.7);animation:pulse 2.4s ease-in-out infinite}
+.brand .core::after{content:'';position:absolute;inset:-6px;border-radius:50%;
+  border:1.5px solid rgba(57,230,255,.5);border-top-color:transparent;border-bottom-color:transparent;
+  animation:orbit 3s linear infinite}
+.brand .core::before{content:'';position:absolute;inset:-11px;border-radius:50%;
+  border:1px solid rgba(57,230,255,.18);animation:orbit 6s linear infinite reverse}
+.brand .orbname{color:var(--cyan);opacity:.85;font-size:12px;letter-spacing:.22em;margin-left:2px}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.18);opacity:1}}
+@keyframes orbit{to{transform:rotate(360deg)}}
 .status{display:flex;align-items:center;gap:9px;font:600 11px/1 var(--hud);letter-spacing:.12em;
   text-transform:uppercase;color:var(--mut)}
 .status .sep{opacity:.4}
@@ -220,8 +227,9 @@ def _shell(ctx, current, inner, refresh=False):
         head.append("<meta http-equiv=refresh content=45>")
     head.append("<style>%s</style></head><body><div class=sweep></div>" % _CSS)
     head.append(
-        "<header class=topbar><div class=brand><span class=core></span>EBE&nbsp;COMMAND</div>"
-        "<div class=status><span class=dot></span>ONLINE<span class=sep>·</span>"
+        "<header class=topbar><div class=brand><span class=core></span>EBE&nbsp;COMMAND"
+        "<span class=orbname>EBE&nbsp;ORB</span></div>"
+        "<div class=status><span class=dot></span>EBE ORB ONLINE<span class=sep>·</span>"
         "<span id=clock>--:--:--</span><span class=sep>·</span>%s<span class=sep>·</span>%s</div></header>"
         % (_esc(ctx["pname"]), _esc(ctx["fee"])))
     head.append("<nav class=nav>%s</nav>" % nav)
