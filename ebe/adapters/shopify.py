@@ -2,12 +2,18 @@
 """
 shopify.py — LIVE Shopify Admin API (your own-brand DTC store: stock + prices).
 
-Auth is a single Admin API access token (create a custom app in your Shopify admin →
-Settings → Apps and sales channels → Develop apps). No OAuth dance needed for a
-private/custom app on your own store.
+Auth (2026+): Shopify deprecated the old "reveal token" custom apps. A Dev Dashboard
+app gives a Client ID + Client Secret, which EBE exchanges for a 24h Admin API access
+token using the CLIENT CREDENTIALS GRANT — server-to-server, no browser, no redirect.
+This works because the app and store are in the same Shopify organization (your own).
 
-  SHOPIFY_STORE   your store handle (the part before .myshopify.com)
-  SHOPIFY_TOKEN   Admin API access token (shpat_...)
+  SHOPIFY_STORE          your store handle (the part before .myshopify.com)
+  SHOPIFY_CLIENT_ID      Dev Dashboard app → Settings → Client ID      (preferred)
+  SHOPIFY_CLIENT_SECRET  Dev Dashboard app → Settings → Client secret  (preferred)
+  SHOPIFY_TOKEN          a static Admin API token, if you still have a legacy one
+
+If CLIENT_ID + CLIENT_SECRET are set, EBE mints a fresh token every run (so the 24h
+expiry never bites). A static SHOPIFY_TOKEN is used only as a fallback.
 
 Matching is by variant SKU — set the same SKU on each Shopify variant as in your
 catalog, and `python -m ebe sync --channel shopify` updates on-hand + price.
@@ -20,12 +26,35 @@ from .base import request_json, AdapterError
 API_VERSION = "2024-01"
 
 
+def mint_access_token(store, client_id, client_secret):
+    """Client credentials grant → (token, expires_in). Token is valid ~24h.
+    Only works for a first-party app installed on a store in your own organization."""
+    data = request_json(
+        "POST", "https://%s.myshopify.com/admin/oauth/access_token" % store,
+        json_body={"client_id": client_id, "client_secret": client_secret,
+                   "grant_type": "client_credentials"})
+    token = data.get("access_token")
+    if not token:
+        raise AdapterError("Shopify client-credentials returned no access_token: %s" % data)
+    return token, data.get("expires_in")
+
+
 class ShopifyClient:
     def __init__(self, store=None, token=None, version=API_VERSION):
         self.store = store or config.get("SHOPIFY_STORE")
-        self.token = token or config.get("SHOPIFY_TOKEN")
+        client_id = config.get("SHOPIFY_CLIENT_ID")
+        client_secret = config.get("SHOPIFY_CLIENT_SECRET")
+        self.token = token or None
+        # Preferred 2026 path: mint a fresh token from Client ID + Secret.
+        if not self.token and self.store and client_id and client_secret:
+            self.token, _ = mint_access_token(self.store, client_id, client_secret)
+        # Fallback: a legacy static Admin API token, if that's all that's set.
+        if not self.token:
+            self.token = config.get("SHOPIFY_TOKEN")
         if not all((self.store, self.token)):
-            raise AdapterError("Shopify creds missing (SHOPIFY_STORE/SHOPIFY_TOKEN)")
+            raise AdapterError(
+                "Shopify creds missing — set SHOPIFY_STORE + SHOPIFY_CLIENT_ID + "
+                "SHOPIFY_CLIENT_SECRET in .env")
         self.base = "https://%s.myshopify.com/admin/api/%s" % (self.store, version)
 
     def _get(self, path, params=None):

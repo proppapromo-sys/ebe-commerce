@@ -15,7 +15,8 @@ class StatusTests(unittest.TestCase):
         self.s = Store(self.path)
         # make sure no real channel keys leak in from the environment
         config._LOADED = True
-        for k in ("SHOPIFY_STORE", "SHOPIFY_TOKEN", "SPAPI_REFRESH_TOKEN",
+        for k in ("SHOPIFY_STORE", "SHOPIFY_TOKEN", "SHOPIFY_CLIENT_ID",
+                  "SHOPIFY_CLIENT_SECRET", "SPAPI_REFRESH_TOKEN",
                   "SPAPI_CLIENT_ID", "SPAPI_CLIENT_SECRET"):
             os.environ.pop(k, None)
 
@@ -40,7 +41,8 @@ class StatusTests(unittest.TestCase):
         self.s.upsert_products([{"sku": "A", "name": "x", "cost": 5, "sell": 20,
                                  "on_hand": 100, "monthly_sales": 10}])
         os.environ["SHOPIFY_STORE"] = "g0-ew"
-        os.environ["SHOPIFY_TOKEN"] = "shpat_x"
+        os.environ["SHOPIFY_CLIENT_ID"] = "cid"
+        os.environ["SHOPIFY_CLIENT_SECRET"] = "secret"
         try:
             self.s._log("autopilot", note="sync 1/1ch · drafts 0 ($0)")
             self.s._cx.commit()
@@ -48,8 +50,8 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(st["health"], "fresh")
             self.assertIn("shopify", st["connected"])
         finally:
-            os.environ.pop("SHOPIFY_STORE", None)
-            os.environ.pop("SHOPIFY_TOKEN", None)
+            for k in ("SHOPIFY_STORE", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"):
+                os.environ.pop(k, None)
 
     def test_stale_when_old_run(self):
         self.s.upsert_products([{"sku": "A", "name": "x", "cost": 5, "sell": 20,

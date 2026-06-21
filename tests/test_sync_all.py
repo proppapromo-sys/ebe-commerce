@@ -28,18 +28,20 @@ class SyncAllTests(unittest.TestCase):
 
     def test_configured_channels_reads_env(self):
         config._LOADED = True
-        for k in ("SHOPIFY_STORE", "SHOPIFY_TOKEN", "SPAPI_REFRESH_TOKEN",
+        for k in ("SHOPIFY_STORE", "SHOPIFY_TOKEN", "SHOPIFY_CLIENT_ID",
+                  "SHOPIFY_CLIENT_SECRET", "SPAPI_REFRESH_TOKEN",
                   "SPAPI_CLIENT_ID", "SPAPI_CLIENT_SECRET"):
             os.environ.pop(k, None)
         self.assertEqual(sync.configured_channels(), [])           # nothing set → none
         os.environ["SHOPIFY_STORE"] = "g0zjm0-ew"
-        os.environ["SHOPIFY_TOKEN"] = "shpat_x"
+        os.environ["SHOPIFY_CLIENT_ID"] = "cid"
+        os.environ["SHOPIFY_CLIENT_SECRET"] = "secret"
         try:
             self.assertIn("shopify", sync.configured_channels())
             self.assertNotIn("amazon", sync.configured_channels())
         finally:
-            os.environ.pop("SHOPIFY_STORE", None)
-            os.environ.pop("SHOPIFY_TOKEN", None)
+            for k in ("SHOPIFY_STORE", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"):
+                os.environ.pop(k, None)
 
     def test_sync_all_skips_unconfigured_and_runs_configured(self):
         # monkeypatch the channel factory so no network is touched

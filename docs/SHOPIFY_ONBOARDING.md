@@ -1,53 +1,52 @@
-# EBE Command · Shopify Setup
+# EBE Command · Shopify Setup (2026)
 
-Your Shopify adapter is already built — this is how to wire your store into EBE so stock
-and prices sync into the one database, alongside Amazon and the venue.
+Your Shopify adapter is built — this wires your store into EBE so stock and prices sync
+into the one database alongside Amazon and the venue.
+
+> **What changed:** Shopify **deprecated the old "reveal Admin API token" custom apps on
+> Jan 1, 2026.** There is no more `shpat_…` to copy from the admin. Apps now live in the
+> **Dev Dashboard** and give a **Client ID + Client Secret**. EBE exchanges those for a
+> 24-hour access token automatically (the *client credentials grant*) — no browser, no
+> redirect URL, no token to paste. You just provide three values.
 
 ---
 
-## 0. Pick the plan (honest version)
-- The **$1/mo × 3 months** promo is near-zero risk — take it.
-- That promo is on the **Advanced** plan ($399/mo after). You only need Advanced for:
-  **live 3rd-party shipping rates**, **multi-region storefronts**, the **2.5% card rate**
-  (only beats Basic above ~$90k/mo), or **15 staff**.
-- If you're starting mostly domestic, **downgrade to Basic ($39) after the trial** — same
-  store, same EBE connection. Move up when volume or international demand justifies it.
+## 1. Your store handle
+The part before `.myshopify.com`. For `g0zjm0-ew.myshopify.com` it's `g0zjm0-ew`.
+That's your `SHOPIFY_STORE`.
 
-## 1. Create the store
-- Sign up at shopify.com, claim your store handle (e.g. `ebe-tech` → `ebe-tech.myshopify.com`).
-- That handle (the part before `.myshopify.com`) is your `SHOPIFY_STORE`.
+## 2. Create the app + grab Client ID / Secret
+1. Go to the **Dev Dashboard**: https://dev.shopify.com → your org → **Apps** → **Create app**.
+2. Give it API scopes (read is all EBE needs): `read_products`, `read_inventory`, `read_orders`.
+3. **Install** the app on your store.
+4. Open the app → **Settings** → copy **Client ID** and **Client secret**.
 
-## 2. Get the Admin API token (this is the key EBE needs)
-1. Shopify admin → **Settings → Apps and sales channels → Develop apps**.
-2. **Allow custom app development** (one-time), then **Create an app** — name it `EBE`.
-3. **Configure Admin API scopes** — grant read access (read is all EBE needs to sync):
-   - `read_products`, `read_inventory`, `read_price_rules`, `read_orders`
-4. **Install app** → reveal the **Admin API access token** (`shpat_…`). Copy it once.
-   - That token is your `SHOPIFY_TOKEN`.
+> The client credentials grant only works because the app and the store are in **your own
+> organization**. That's the normal case for your own shop.
 
-## 3. Put the keys in .env
+## 3. Put three values in `.env`
+The cleanest way (no Notepad, replaces any old/duplicate line):
+```powershell
+cd $HOME\ebe-commerce
+python -c "from ebe.adapters import config; config.set_env('SHOPIFY_STORE','g0zjm0-ew')"
+python -c "from ebe.adapters import config; config.set_env('SHOPIFY_CLIENT_ID','PASTE_CLIENT_ID')"
+python -c "from ebe.adapters import config; config.set_env('SHOPIFY_CLIENT_SECRET','PASTE_CLIENT_SECRET')"
 ```
-SHOPIFY_STORE=ebe-tech
-SHOPIFY_TOKEN=shpat_xxxxxxxxxxxxxxxxxxxxxxxx
-```
-Then confirm:
-```
-python -m ebe check        # shopify → ● shop reachable
-```
+*(An old `SHOPIFY_TOKEN` line, if any, is now ignored — EBE mints fresh tokens itself.)*
 
-## 4. Match SKUs, then sync
-- In Shopify, set each **variant SKU** to the same SKU you use in `data/products.csv`
-  (e.g. `M2·OS·Navy`). EBE matches on SKU.
+## 4. Verify — EBE mints the token for you
+```powershell
+python -m ebe check          # shopify → ● shop reachable
 ```
+No handshake. EBE calls Shopify's token endpoint with your Client ID + Secret, gets a
+24h token, and uses it. It re-mints automatically every run, so the expiry never bites.
+
+## 5. Match SKUs, then sync
+- In Shopify, set each **variant SKU** to the same SKU in your catalog. EBE matches on SKU.
+```powershell
 python -m ebe sync --channel shopify --with-prices   # pulls on-hand + live prices
 python -m ebe rebuy                                   # re-buy now runs on Shopify truth too
 ```
-
-## 5. What you get inside EBE
-- **One database across channels** — Shopify + Amazon stock feed the same auto-reorder and
-  vendor auction; no per-channel chaos.
-- **Repricer** — `python -m ebe reprice` positions Shopify prices vs the market, floor-protected.
-- **Brief & ledger** — Shopify sales flow into the same cash picture (true revenue via Stripe).
 
 ---
 
@@ -55,7 +54,8 @@ python -m ebe rebuy                                   # re-buy now runs on Shopi
 | Field | Where | .env key |
 |---|---|---|
 | Store handle | before `.myshopify.com` | `SHOPIFY_STORE` |
-| Admin API token | Develop apps → your app → API credentials | `SHOPIFY_TOKEN` |
+| Client ID | Dev Dashboard → app → Settings | `SHOPIFY_CLIENT_ID` |
+| Client secret | Dev Dashboard → app → Settings | `SHOPIFY_CLIENT_SECRET` |
 
-> Use the **Admin API token** (`shpat_…`), keep it in `.env` (git-ignored), never paste it in chat
-> or commit it. Read-only scopes keep it safe.
+> Keep `.env` private (it's git-ignored). Never paste the secret in chat or commit it.
+> Read-only scopes keep it safe.
