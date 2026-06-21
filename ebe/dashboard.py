@@ -25,7 +25,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 NAV = [("/brief", "Brief", "brief"), ("/report", "Orb Report", "report"), ("/act", "Act", "act"), ("/", "Today", "today"),
-       ("/catalog", "Catalog", "catalog"),
+       ("/catalog", "Catalog", "catalog"), ("/pnl", "P&L", "pnl"),
        ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
@@ -652,6 +652,42 @@ def _do_catalog_sync(args):
     return "✓ synced — %d SKU(s) updated, %d unknown" % (len(res["updated"]), len(res["unknown"]))
 
 
+# ── P&L page (realized profit from recorded sales) ───────────────────────────
+def render_pnl(args):
+    from . import pnl as pnlmod
+    store, live, db = _store_for(args)
+    days = 30
+    data = pnlmod.compute(store, days=days)
+    t = data["totals"]
+    inner = ["<h2>📈 Profit &amp; Loss <span class=sub>(last %d days)</span></h2>" % days]
+    if not live:
+        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours and pull "
+                     "sales (<b>python -m ebe sales --channel shopify</b>) for real profit.</div>")
+    inner.append(
+        "<div class=metrics>"
+        "<div class=metric><div class=k>Revenue</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class=metric><div class=k>COGS</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric go'><div class=k>Gross profit</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class=metric><div class=k>Margin</div><div class=v style='font-size:22px'>%.0f%%</div></div>"
+        "</div>" % (round(t["revenue"]), round(t["cogs"]), round(t["gross"]), t["margin"] * 100))
+
+    if data["rows"]:
+        inner.append("<table><tr><th>product<th class=r>units<th class=r>revenue"
+                     "<th class=r>COGS<th class=r>gross<th class=r>margin</tr>")
+        for r in data["rows"]:
+            mcls = "ok" if r["margin"] >= 0.3 else ("warn" if r["margin"] >= 0.1 else "alert")
+            inner.append("<tr><td>%s<td class=r>%d<td class=r>$%.2f<td class=r>$%.2f"
+                         "<td class=r>$%.2f<td class='r %s'>%.0f%%</tr>"
+                         % (_esc(r["name"][:28]), r["units"], r["revenue"], r["cogs"],
+                            r["gross"], mcls, r["margin"] * 100))
+        inner.append("</table>")
+    else:
+        inner.append("<div class=card>No recorded sales yet — pull them with "
+                     "<b>python -m ebe sales --channel shopify</b>, or log one with "
+                     "<b>python -m ebe sell --id SKU --units N</b>.</div>")
+    return _shell(_ctx_from_args(args), "pnl", "".join(inner))
+
+
 # ── EBE ORB REPORT page (AI executive rundown + catalog score) ───────────────
 def render_report(args):
     from . import report as reportmod
@@ -1177,6 +1213,8 @@ def serve(args):
                     body = render_brief(a)
                 elif path == "/report":
                     body = render_report(a)
+                elif path == "/pnl":
+                    body = render_pnl(a)
                 elif path == "/act":
                     body = render_act(a)
                 elif path == "/catalog":

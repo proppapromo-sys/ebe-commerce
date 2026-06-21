@@ -52,14 +52,22 @@ def compose(store, profile="generic", fee=None):
     summ = summarize(ranked)
     winners = [r for r in ranked if r["verdict"] in ("CORNER", "STRONG")]
     dogs = [r for r in ranked if r["verdict"] == "pass" or r["net_unit"] <= 0]
+    from . import pnl as pnlmod
+    realized = pnlmod.compute(store, days=30)
     return {"brief": b, "ranked": ranked, "summary": summ,
-            "winners": winners, "dogs": dogs, "fee": fee.name, "profile": prof.name}
+            "winners": winners, "dogs": dogs, "fee": fee.name, "profile": prof.name,
+            "pnl": realized}
 
 
 def facts(data) -> str:
     """Compact fact sheet for the model — brief facts plus the score."""
     from .ai.narrator import facts as brief_facts
     L = [brief_facts(data["brief"])]
+    pl = (data.get("pnl") or {}).get("totals")
+    if pl and pl.get("units"):
+        L.append("Realized sales (last 30 days): %d units, $%.0f revenue, $%.0f COGS, "
+                 "$%.0f gross profit (%.0f%% margin)."
+                 % (pl["units"], pl["revenue"], pl["cogs"], pl["gross"], pl["margin"] * 100))
     s = data["summary"]
     L.append("\nCatalog score (fees %s): %d products, %d CORNER, %d STRONG, "
              "$%.0f/mo combined profit potential."
