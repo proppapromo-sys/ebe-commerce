@@ -1155,6 +1155,36 @@ def _status(args):
     print(status.render_text(status.compose(s)))
 
 
+def _add(args):
+    """Add or update one catalog product — no CSV needed. Partial: only given fields change."""
+    from .store import Store
+    if not getattr(args, "sku", None):
+        raise SystemExit(
+            'usage: ebe add --sku COCO-CHARCOAL-1.2KG --name "Coconut Charcoal" '
+            "--cost 3 --sell 14.99 [--on-hand 100] [--monthly 1000] [--supplier X] "
+            "[--lead-time 21] [--asin B0...] [--category ...]")
+    s = Store(_db_path(args))
+    sku = args.sku.strip()
+    existing = s.product(sku)
+    existed = bool(existing)
+    row = dict(existing) if existing else {}   # preserve untouched fields on update
+    row["sku"] = sku
+    for attr, col in (("name", "name"), ("category", "category"), ("cost", "cost"),
+                      ("sell", "sell"), ("on_hand", "on_hand"), ("monthly", "monthly_sales"),
+                      ("supplier", "supplier"), ("lead_time", "lead_time_days"), ("asin", "asin")):
+        val = getattr(args, attr, None)
+        if val is not None:
+            row[col] = val
+    s.upsert_products([row])
+    p = s.product(sku)
+    print("\n══ EBE COMMAND · CATALOG %s ══" % ("UPDATED" if existed else "ADDED"))
+    print("  %s  %s" % (sku, p.get("name")))
+    print("  cost $%.2f · sell $%.2f · on_hand %d · %d/mo"
+          % (p.get("cost") or 0, p.get("sell") or 0,
+             p.get("on_hand") or 0, p.get("monthly_sales") or 0))
+    print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
+
+
 def _publish(args):
     """Push the EBE catalog to a sales channel — create what's missing (matched by SKU)."""
     from .store import Store
@@ -1256,8 +1286,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1326,6 +1356,16 @@ def main(argv=None):
     ap.add_argument("--cycles", type=int, default=None, help="autopilot: stop after N cycles (default: run forever)")
     ap.add_argument("--reprice", action="store_true", help="autopilot: also reprice to the live market (needs Keepa + per-SKU asin)")
     ap.add_argument("--stock", action="store_true", help="publish: also push on-hand as tracked Shopify inventory (needs write_inventory)")
+    # add: create/update one catalog product without a CSV
+    ap.add_argument("--sku", help="add: the product SKU (required)")
+    ap.add_argument("--name", help="add: product name")
+    ap.add_argument("--cost", type=float, default=None, help="add: landed unit cost")
+    ap.add_argument("--sell", type=float, default=None, help="add: sell price")
+    ap.add_argument("--on-hand", type=int, default=None, dest="on_hand", help="add: units on hand")
+    ap.add_argument("--monthly", type=int, default=None, help="add: monthly unit sales (demand)")
+    ap.add_argument("--supplier", help="add: supplier name")
+    ap.add_argument("--lead-time", type=int, default=None, dest="lead_time", help="add: supplier lead time (days)")
+    ap.add_argument("--asin", help="add: Amazon ASIN (enables live repricing)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -1426,6 +1466,8 @@ def main(argv=None):
         return _autopilot(args)
     if args.branch == "status":
         return _status(args)
+    if args.branch == "add":
+        return _add(args)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:
