@@ -539,6 +539,16 @@ class Store:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def channel_orders_seen(self) -> set:
+        """Keys of channel orders already recorded — so sales sync is idempotent."""
+        cur = self._cx.execute("SELECT note FROM events WHERE kind='channel_order'")
+        return {row["note"] for row in cur.fetchall() if row["note"]}
+
+    def record_channel_order(self, key, revenue=0) -> None:
+        """Mark a channel order as recorded (idempotency key + its revenue)."""
+        self._log("channel_order", note=key, qty=int(round(revenue or 0)))
+        self._cx.commit()
+
 
 def product_as_item(p: dict) -> dict:
     """Shape a stored product row like the items the genome branches expect."""

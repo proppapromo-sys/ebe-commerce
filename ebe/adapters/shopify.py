@@ -164,6 +164,15 @@ class ShopifyClient:
             out.extend(p.get("variants", []) or [])
         return out
 
+    def orders(self, days=30, status="any", limit=250):
+        """Recent orders (needs read_orders) — each has line_items[{sku, quantity, price}]."""
+        import datetime
+        since = (datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        data = self._get("/orders.json",
+                         params={"status": status, "created_at_min": since, "limit": limit})
+        return data.get("orders", []) or []
+
     def stock(self):
         """{sku: on_hand} — the generic channel interface the sync layer expects."""
         return variants_to_stock(self.variants())

@@ -1186,6 +1186,30 @@ def _add(args):
     print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
 
 
+def _sales(args):
+    """Pull real channel orders and record what actually sold (idempotent)."""
+    from .store import Store
+    from .sales import pull_orders
+    ch = (getattr(args, "channel", None) or "shopify").lower()
+    if ch != "shopify":
+        raise SystemExit("sales currently supports --channel shopify")
+    from .adapters.shopify import ShopifyClient
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — load it first")
+    days = args.days or 30
+    print("\n══ EBE COMMAND · SALES SYNC (Shopify · last %dd) ══" % days)
+    res = pull_orders(s, ShopifyClient(), days=days)
+    for sku, units in sorted(res["by_sku"].items(), key=lambda kv: -kv[1]):
+        print("  ✓ %-26s %d sold" % (sku[:26], units))
+    if res["unknown"]:
+        print("  ⚠ sold but not in catalog: %s" % ", ".join(res["unknown"][:8]))
+    print("  ── %d new order(s) · %d unit(s) · $%.2f revenue"
+          % (res["orders"], res["units"], res["revenue"]))
+    if not res["orders"]:
+        print("  (nothing new since last sync — already up to date)")
+
+
 def _report(args):
     """AI executive report — fuses the ops brief + catalog score into a written rundown."""
     from .store import Store
@@ -1395,8 +1419,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report", "sales"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report / sales")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1590,6 +1614,12 @@ def main(argv=None):
         return _score(args)
     if args.branch == "report":
         return _report(args)
+    if args.branch == "sales":
+        from .adapters.base import AdapterError
+        try:
+            return _sales(args)
+        except AdapterError as e:
+            raise SystemExit("sales failed: %s\n(run `python -m ebe check`)" % e)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:
