@@ -15,30 +15,42 @@ missing ones are created. Re-running is safe — it never duplicates.
 from __future__ import annotations
 
 
-def publish_catalog(store, client, only=None, set_stock=False) -> dict:
-    """Create catalog products that aren't on the channel yet (matched by SKU).
+def publish_catalog(store, client, only=None, set_stock=False, update=False) -> dict:
+    """Push the catalog to the channel (matched by SKU).
 
     only        — iterable of SKUs to publish (default: the whole catalog)
     set_stock   — also push on-hand as tracked inventory (needs write_inventory);
                   default False = list untracked (always-available), the no-stock model.
-    Returns {created, skipped, failed} lists of SKUs.
+    update      — also UPDATE listings already on the channel (title/description/price/
+                  photo) instead of skipping them. Default False = create-only.
+    Returns {created, updated, skipped, failed}.
     """
     only = set(only) if only else None
     on_channel = {v.get("sku") for v in client.variants() if v.get("sku")}
-    created, skipped, failed = [], [], []
+    created, updated, skipped, failed = [], [], [], []
     for p in store.products():
         sku = p["sku"]
         if only is not None and sku not in only:
             continue
+        title = p.get("name") or sku
+        body = p.get("description") or ""
+        image = p.get("image_url") or None
         if sku in on_channel:
-            skipped.append(sku)
+            if not update:
+                skipped.append(sku)
+                continue
+            try:
+                client.update_product(sku=sku, title=title, price=p.get("sell") or 0,
+                                      body_html=body, image_url=image)
+                updated.append(sku)
+            except Exception as e:
+                failed.append((sku, str(e)))
             continue
         qty = (p.get("on_hand") or 0) if set_stock else None
         try:
-            client.create_product(sku=sku, title=p.get("name") or sku,
-                                   price=p.get("sell") or 0,
-                                   body_html=p.get("description") or "", qty=qty)
+            client.create_product(sku=sku, title=title, price=p.get("sell") or 0,
+                                   body_html=body, qty=qty, image_url=image)
             created.append(sku)
         except Exception as e:
             failed.append((sku, str(e)))
-    return {"created": created, "skipped": skipped, "failed": failed}
+    return {"created": created, "updated": updated, "skipped": skipped, "failed": failed}

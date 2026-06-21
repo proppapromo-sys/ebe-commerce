@@ -521,10 +521,12 @@ def render_catalog(args, msg=""):
     if shop_on:
         inner.append(
             "<div class=card>"
-            "<a class='btn go' href='/catalog-publish?profile=%s'>⬆ Publish catalog → Shopify</a> "
+            "<a class='btn go' href='/catalog-publish?profile=%s'>⬆ Publish new → Shopify</a> "
+            "<a class='btn' href='/catalog-publish?update=1&profile=%s'>↻ Update listings</a> "
             "<a class='btn' href='/catalog-sync?profile=%s'>🔄 Sync from Shopify</a>"
-            "<div class=sub>Publish creates any product missing from Shopify (needs write_products). "
-            "Sync pulls live stock + price back into EBE.</div></div>" % (p, p))
+            "<div class=sub>Publish creates products missing from Shopify; Update refreshes "
+            "title/description/price/photo on existing ones (needs write_products). "
+            "Sync pulls live stock + price back into EBE.</div></div>" % (p, p, p))
     else:
         inner.append("<div class='card warn'>Shopify not connected — add SHOPIFY_STORE + "
                      "SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET to .env, then this tab can publish & sync.</div>")
@@ -541,6 +543,8 @@ def render_catalog(args, msg=""):
   <input name=sell type=number step='0.01' placeholder='Sell $'>
   <input name=on_hand type=number placeholder='On hand'>
   <input name=monthly type=number placeholder='Sales / mo'>
+  <input name=image placeholder='Image URL' style='min-width:220px'>
+  <input name=description placeholder='Description' style='min-width:280px;flex:1'>
   <button class='btn go' type=submit>Save</button>
 </form>
 <div class=sub>Existing SKU? Only the fields you fill change — the rest stay as they were.</div>
@@ -581,7 +585,8 @@ def _do_catalog_add(args, qs):
     row = dict(existing) if existing else {}
     row["sku"] = sku
     for field, col, cast in (("name", "name", str), ("cost", "cost", float), ("sell", "sell", float),
-                             ("on_hand", "on_hand", int), ("monthly", "monthly_sales", int)):
+                             ("on_hand", "on_hand", int), ("monthly", "monthly_sales", int),
+                             ("description", "description", str), ("image", "image_url", str)):
         raw = (qs.get(field) or [""])[0].strip()
         if raw:
             try:
@@ -592,17 +597,18 @@ def _do_catalog_add(args, qs):
     return "%s %s" % ("✓ updated" if existing else "✓ added", sku)
 
 
-def _do_catalog_publish(args):
-    """Publish the catalog to Shopify. Returns a status message."""
+def _do_catalog_publish(args, update=False):
+    """Publish the catalog to Shopify (update=True also refreshes existing listings)."""
     from .store import Store, DEFAULT_DB
     from .publish import publish_catalog
     from .adapters.shopify import ShopifyClient
     db = getattr(args, "db", None) or DEFAULT_DB
     try:
-        res = publish_catalog(Store(db), ShopifyClient())
+        res = publish_catalog(Store(db), ShopifyClient(), update=update)
     except Exception as e:
         return "✕ publish failed: %s" % e
-    bits = "✓ published — %d created, %d already live" % (len(res["created"]), len(res["skipped"]))
+    bits = "✓ %d created, %d updated, %d unchanged" % (
+        len(res["created"]), len(res.get("updated", [])), len(res["skipped"]))
     if res["failed"]:
         bits += ", %d failed (%s)" % (len(res["failed"]), res["failed"][0][1][:60])
     return bits
@@ -1075,7 +1081,7 @@ def serve(args):
                 if path == "/catalog-add":
                     msg = _do_catalog_add(a, qs)
                 elif path == "/catalog-publish":
-                    msg = _do_catalog_publish(a)
+                    msg = _do_catalog_publish(a, update=bool(qs.get("update")))
                 else:
                     msg = _do_catalog_sync(a)
                 prof = (qs.get("profile") or ["generic"])[0]

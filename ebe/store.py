@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS products (
     monthly_sales  INTEGER NOT NULL DEFAULT 0,
     supplier       TEXT,
     asin           TEXT,
+    description    TEXT,
+    image_url      TEXT,
     updated_at     REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS purchase_orders (
@@ -136,7 +138,8 @@ _SUPPLIER_COLS = ("name", "email", "phone", "link", "lead_time_days", "min_order
 
 # columns the catalog importer understands (anything else in a row is ignored)
 _PRODUCT_COLS = ("sku", "name", "category", "cost", "sell", "fulfilment",
-                 "lead_time_days", "on_hand", "monthly_sales", "supplier", "asin")
+                 "lead_time_days", "on_hand", "monthly_sales", "supplier", "asin",
+                 "description", "image_url")
 
 
 class Store:
@@ -153,7 +156,7 @@ class Store:
     def _migrate(self):
         """Add columns introduced after a DB was first created (idempotent)."""
         have = {r["name"] for r in self._cx.execute("PRAGMA table_info(products)")}
-        for col, decl in (("asin", "TEXT"),):
+        for col, decl in (("asin", "TEXT"), ("description", "TEXT"), ("image_url", "TEXT")):
             if col not in have:
                 self._cx.execute("ALTER TABLE products ADD COLUMN %s %s" % (col, decl))
         pohave = {r["name"] for r in self._cx.execute("PRAGMA table_info(purchase_orders)")}

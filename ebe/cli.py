@@ -1171,7 +1171,8 @@ def _add(args):
     row["sku"] = sku
     for attr, col in (("name", "name"), ("category", "category"), ("cost", "cost"),
                       ("sell", "sell"), ("on_hand", "on_hand"), ("monthly", "monthly_sales"),
-                      ("supplier", "supplier"), ("lead_time", "lead_time_days"), ("asin", "asin")):
+                      ("supplier", "supplier"), ("lead_time", "lead_time_days"), ("asin", "asin"),
+                      ("description", "description"), ("image", "image_url")):
         val = getattr(args, attr, None)
         if val is not None:
             row[col] = val
@@ -1197,18 +1198,21 @@ def _publish(args):
     if not s.products():
         raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
     set_stock = getattr(args, "stock", False)
+    update = getattr(args, "update", False)
     print("\n══ EBE COMMAND · PUBLISH → SHOPIFY ══")
-    res = publish_catalog(s, ShopifyClient(), set_stock=set_stock)
+    res = publish_catalog(s, ShopifyClient(), set_stock=set_stock, update=update)
     for sku in res["created"]:
         print("  ＋ created   %s" % sku)
+    for sku in res.get("updated", []):
+        print("  ↻ updated   %s" % sku)
     for sku in res["skipped"]:
-        print("  = already   %s" % sku)
+        print("  = already   %s%s" % (sku, "" if update else "  (use --update to refresh it)"))
     for sku, err in res["failed"]:
         print("  ✕ failed    %s — %s" % (sku, err))
-    print("  ── %d created · %d already live · %d failed%s"
-          % (len(res["created"]), len(res["skipped"]), len(res["failed"]),
+    print("  ── %d created · %d updated · %d unchanged · %d failed%s"
+          % (len(res["created"]), len(res.get("updated", [])), len(res["skipped"]), len(res["failed"]),
              "" if set_stock else "  (untracked — add --stock to push on-hand)"))
-    if res["created"]:
+    if res["created"] or res.get("updated"):
         print("  Now run:  python -m ebe sync --channel shopify --with-prices")
 
 
@@ -1366,6 +1370,9 @@ def main(argv=None):
     ap.add_argument("--supplier", help="add: supplier name")
     ap.add_argument("--lead-time", type=int, default=None, dest="lead_time", help="add: supplier lead time (days)")
     ap.add_argument("--asin", help="add: Amazon ASIN (enables live repricing)")
+    ap.add_argument("--description", help="add: product description (pushed to the channel listing)")
+    ap.add_argument("--image", help="add: product image URL (pushed to the channel listing)")
+    ap.add_argument("--update", action="store_true", help="publish: also update listings already on the channel (title/description/price/photo)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:

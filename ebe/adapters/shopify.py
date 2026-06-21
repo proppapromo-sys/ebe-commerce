@@ -87,16 +87,34 @@ class ShopifyClient:
                            "inventory_item_id": inventory_item_id,
                            "available": int(available)})
 
-    def create_product(self, sku, title, price, body_html="", qty=None, status="active"):
+    def _put(self, path, body):
+        return request_json("PUT", self.base + path,
+                            headers={"X-Shopify-Access-Token": self.token,
+                                     "Content-Type": "application/json"},
+                            json_body=body)
+
+    @staticmethod
+    def _images(image_url):
+        """One or many image URLs → Shopify image payload (or [])."""
+        if not image_url:
+            return []
+        urls = image_url if isinstance(image_url, (list, tuple)) else [image_url]
+        return [{"src": u} for u in urls if u]
+
+    def create_product(self, sku, title, price, body_html="", qty=None, status="active",
+                       image_url=None):
         """Create a product+variant on Shopify (needs write_products scope).
         qty=None lists it untracked (always available); an int tracks + sets stock
-        (needs write_inventory). Returns the created product dict."""
+        (needs write_inventory). image_url adds product photo(s). Returns the product dict."""
         variant = {"sku": sku, "price": "%.2f" % float(price or 0)}
         if qty is not None:
             variant["inventory_management"] = "shopify"
-        body = {"product": {"title": title, "body_html": body_html or "",
-                            "status": status, "variants": [variant]}}
-        prod = (self._post("/products.json", body) or {}).get("product") or {}
+        product = {"title": title, "body_html": body_html or "",
+                   "status": status, "variants": [variant]}
+        imgs = self._images(image_url)
+        if imgs:
+            product["images"] = imgs
+        prod = (self._post("/products.json", {"product": product}) or {}).get("product") or {}
         if qty is not None:
             try:
                 inv_item = (prod.get("variants") or [{}])[0].get("inventory_item_id")
@@ -106,6 +124,36 @@ class ShopifyClient:
             except Exception:
                 pass        # product created; stock can be set later in Shopify
         return prod
+
+    def product_id_for_sku(self, sku):
+        """The Shopify product id whose variant carries this SKU, or None."""
+        data = self._get("/products.json", params={"limit": 250})
+        for p in data.get("products", []) or []:
+            for v in p.get("variants", []) or []:
+                if v.get("sku") == sku:
+                    return p.get("id")
+        return None
+
+    def update_product(self, sku, title=None, price=None, body_html=None, image_url=None):
+        """Update an existing listing's title/description/price/photo (matched by SKU).
+        Returns the updated product dict, or None if the SKU isn't on the store."""
+        pid = self.product_id_for_sku(sku)
+        if not pid:
+            return None
+        product = {"id": pid}
+        if title is not None:
+            product["title"] = title
+        if body_html is not None:
+            product["body_html"] = body_html
+        if price is not None:
+            cur = (self._get("/products/%d.json" % pid).get("product") or {})
+            variants = cur.get("variants") or []
+            if variants:
+                product["variants"] = [{"id": variants[0]["id"], "price": "%.2f" % float(price)}]
+        imgs = self._images(image_url)
+        if imgs:
+            product["images"] = imgs
+        return (self._put("/products/%d.json" % pid, {"product": product}) or {}).get("product") or {}
 
 
     def variants(self):
