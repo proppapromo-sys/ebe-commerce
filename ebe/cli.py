@@ -1155,6 +1155,33 @@ def _status(args):
     print(status.render_text(status.compose(s)))
 
 
+def _publish(args):
+    """Push the EBE catalog to a sales channel — create what's missing (matched by SKU)."""
+    from .store import Store
+    from .publish import publish_catalog
+    ch = (getattr(args, "channel", None) or "shopify").lower()
+    if ch != "shopify":
+        raise SystemExit("publish currently supports --channel shopify")
+    from .adapters.shopify import ShopifyClient
+    s = Store(_db_path(args))
+    if not s.products():
+        raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    set_stock = getattr(args, "stock", False)
+    print("\n══ EBE COMMAND · PUBLISH → SHOPIFY ══")
+    res = publish_catalog(s, ShopifyClient(), set_stock=set_stock)
+    for sku in res["created"]:
+        print("  ＋ created   %s" % sku)
+    for sku in res["skipped"]:
+        print("  = already   %s" % sku)
+    for sku, err in res["failed"]:
+        print("  ✕ failed    %s — %s" % (sku, err))
+    print("  ── %d created · %d already live · %d failed%s"
+          % (len(res["created"]), len(res["skipped"]), len(res["failed"]),
+             "" if set_stock else "  (untracked — add --stock to push on-hand)"))
+    if res["created"]:
+        print("  Now run:  python -m ebe sync --channel shopify --with-prices")
+
+
 def _venue(args):
     """Venue supply tracking — POS counts -> supplies consumed -> reorder."""
     from .venue import engine
@@ -1229,8 +1256,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1298,6 +1325,7 @@ def main(argv=None):
     ap.add_argument("--every", type=int, default=60, help="autopilot: minutes between cycles (default 60)")
     ap.add_argument("--cycles", type=int, default=None, help="autopilot: stop after N cycles (default: run forever)")
     ap.add_argument("--reprice", action="store_true", help="autopilot: also reprice to the live market (needs Keepa + per-SKU asin)")
+    ap.add_argument("--stock", action="store_true", help="publish: also push on-hand as tracked Shopify inventory (needs write_inventory)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -1398,6 +1426,12 @@ def main(argv=None):
         return _autopilot(args)
     if args.branch == "status":
         return _status(args)
+    if args.branch == "publish":
+        from .adapters.base import AdapterError
+        try:
+            return _publish(args)
+        except AdapterError as e:
+            raise SystemExit("publish failed: %s\n(run `python -m ebe check`)" % e)
     if args.branch == "venue":
         return _venue(args)
     if args.branch == "scout":

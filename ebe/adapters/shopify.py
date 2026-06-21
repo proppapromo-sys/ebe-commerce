@@ -61,9 +61,52 @@ class ShopifyClient:
         return request_json("GET", self.base + path,
                             headers={"X-Shopify-Access-Token": self.token}, params=params)
 
+    def _post(self, path, body):
+        return request_json("POST", self.base + path,
+                            headers={"X-Shopify-Access-Token": self.token,
+                                     "Content-Type": "application/json"},
+                            json_body=body)
+
     def check(self):
         """Confirms the token reaches your shop."""
         return bool(self._get("/shop.json").get("shop"))
+
+    def locations(self):
+        return self._get("/locations.json").get("locations", []) or []
+
+    def primary_location_id(self):
+        """The first active location id — where inventory levels are set."""
+        for loc in self.locations():
+            if loc.get("active", True):
+                return loc.get("id")
+        return None
+
+    def set_inventory_level(self, inventory_item_id, location_id, available):
+        return self._post("/inventory_levels/set.json",
+                          {"location_id": location_id,
+                           "inventory_item_id": inventory_item_id,
+                           "available": int(available)})
+
+    def create_product(self, sku, title, price, body_html="", qty=None, status="active"):
+        """Create a product+variant on Shopify (needs write_products scope).
+        qty=None lists it untracked (always available); an int tracks + sets stock
+        (needs write_inventory). Returns the created product dict."""
+        variant = {"sku": sku, "price": "%.2f" % float(price or 0)}
+        if qty is not None:
+            variant["inventory_management"] = "shopify"
+        body = {"product": {"title": title, "body_html": body_html or "",
+                            "status": status, "variants": [variant]}}
+        prod = (self._post("/products.json", body) or {}).get("product") or {}
+        if qty is not None:
+            try:
+                inv_item = (prod.get("variants") or [{}])[0].get("inventory_item_id")
+                loc = self.primary_location_id()
+                if inv_item and loc:
+                    self.set_inventory_level(inv_item, loc, int(qty))
+            except Exception:
+                pass        # product created; stock can be set later in Shopify
+        return prod
+
 
     def variants(self):
         """All variants across products (one page of up to 250 — enough for most small stores)."""
