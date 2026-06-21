@@ -24,7 +24,7 @@ import types
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-NAV = [("/brief", "Brief", "brief"), ("/act", "Act", "act"), ("/", "Today", "today"),
+NAV = [("/brief", "Brief", "brief"), ("/report", "Orb Report", "report"), ("/act", "Act", "act"), ("/", "Today", "today"),
        ("/catalog", "Catalog", "catalog"),
        ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
@@ -652,6 +652,61 @@ def _do_catalog_sync(args):
     return "✓ synced — %d SKU(s) updated, %d unknown" % (len(res["updated"]), len(res["unknown"]))
 
 
+# ── EBE ORB REPORT page (AI executive rundown + catalog score) ───────────────
+def render_report(args):
+    from . import report as reportmod
+    from .fees import PRESETS
+    store, live, db = _store_for(args)
+    prof = args.profile or "generic"
+    p = urllib.parse.quote(prof)
+    data = reportmod.compose(store, profile=prof, fee=PRESETS[args.fees])
+    summ = data["summary"]
+
+    inner = ["<h2>🔮 EBE Orb · Business report</h2>"]
+    if not live:
+        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours with "
+                     "<b>python -m ebe catalog --products data\\products.csv</b> to report on real numbers.</div>")
+
+    if getattr(args, "ai", False):
+        try:
+            rep = reportmod.write(data)
+            prio = "".join("<li>%s</li>" % _esc(x) for x in rep.get("priorities", []))
+            focus = rep.get("product_focus", "")
+            inner.append(
+                "<div class=card><div class=sub>🔮 EBE ORB</div>"
+                "<span class=big>%s</span><p>%s</p>%s%s</div>"
+                % (_esc(rep.get("headline", "")), _esc(rep.get("summary", "")),
+                   ("<p class=sub>➡️ PRIORITIES</p><ul>%s</ul>" % prio) if prio else "",
+                   ("<p><b>🎯 Product focus:</b> %s</p>" % _esc(focus)) if focus else ""))
+        except Exception as ex:
+            inner.append("<div class='card warn'>EBE Orb report unavailable: %s "
+                         "<span class=sub>(needs ANTHROPIC_API_KEY — run python -m ebe check)</span></div>"
+                         % _esc(str(ex)))
+    else:
+        inner.append("<div class=card><a class='btn go' href='/report?profile=%s&ai=1'>🔮 Ask EBE Orb to brief me</a> "
+                     "<span class=sub>Claude writes the executive report from your live numbers</span></div>" % p)
+
+    inner.append(
+        "<div class=metrics>"
+        "<div class=metric><div class=k>Products</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric go'><div class=k>CORNER</div><div class=v data-count='%d'>0</div></div>"
+        "<div class=metric><div class=k>STRONG</div><div class=v data-count='%d'>0</div></div>"
+        "<div class=metric><div class=k>Profit potential</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "</div>" % (summ["count"], summ["corner"], summ["strong"], round(summ["monthly_profit"])))
+
+    inner.append("<h2>📊 Catalog score <span class=sub>(fees %s)</span></h2>" % _esc(data["fee"]))
+    inner.append("<table><tr><th>product<th class=r>cost<th class=r>sell<th class=r>margin"
+                 "<th class=r>edge<th>verdict<th class=r>$/mo</tr>")
+    for r in data["ranked"]:
+        vcls = "ok" if r["verdict"] in ("CORNER", "STRONG") else ("warn" if r["verdict"] == "TEST" else "alert")
+        inner.append("<tr><td>%s<td class=r>$%.2f<td class=r>$%.2f<td class=r>%.0f%%<td class=r>%.0f%%"
+                     "<td class=%s>%s<td class=r>$%.0f</tr>"
+                     % (_esc(r["name"][:28]), r["cost"], r["sell"], r["margin"] * 100,
+                        r["composite"] * 100, vcls, r["verdict"], r["monthly_profit"]))
+    inner.append("</table>")
+    return _shell(_ctx_from_args(args), "report", "".join(inner))
+
+
 # ── BRIEF page (the morning rundown) ─────────────────────────────────────────
 def render_brief(args):
     from . import brief as briefmod
@@ -1120,6 +1175,8 @@ def serve(args):
                     body = render(_data(a))
                 elif path == "/brief":
                     body = render_brief(a)
+                elif path == "/report":
+                    body = render_report(a)
                 elif path == "/act":
                     body = render_act(a)
                 elif path == "/catalog":
