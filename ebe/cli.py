@@ -1186,6 +1186,33 @@ def _add(args):
     print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
 
 
+def _import(args):
+    """Bulk-import pasted supplier listings into the catalog (AI Ears parses each)."""
+    from .store import Store
+    from . import importer
+    if getattr(args, "text", None):
+        text = args.text
+    elif getattr(args, "file", None):
+        with open(args.file, encoding="utf-8") as fh:
+            text = fh.read()
+    else:
+        raise SystemExit('usage: ebe import --file listings.txt   (or --text "listing one\\nlisting two")')
+    listings = importer.split_listings(text)
+    if not listings:
+        raise SystemExit("no listings found in the input")
+    s = Store(_db_path(args))
+    print("\n══ EBE COMMAND · BULK IMPORT ══")
+    print("  parsing %d listing(s) with AI ears …" % len(listings))
+    res = importer.import_listings(s, listings)
+    for sku, name in res["created"]:
+        print("  ＋ %-26s %s" % (sku, name[:40]))
+    for raw, err in res["failed"]:
+        print("  ✕ %-26s %s" % (raw[:26], err[:50]))
+    print("  ── %d imported · %d failed" % (len(res["created"]), len(res["failed"])))
+    if res["created"]:
+        print("  Next:  python -m ebe describe   then   python -m ebe publish --channel shopify")
+
+
 def _describe(args):
     """Have Claude write product descriptions into the catalog (needs ANTHROPIC_API_KEY)."""
     from .store import Store
@@ -1313,8 +1340,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1397,6 +1424,7 @@ def main(argv=None):
     ap.add_argument("--image", help="add: product image URL (pushed to the channel listing)")
     ap.add_argument("--update", action="store_true", help="publish: also update listings already on the channel (title/description/price/photo)")
     ap.add_argument("--overwrite", action="store_true", help="describe: rewrite descriptions even if a product already has one")
+    ap.add_argument("--text", help="import: listings inline instead of --file (newline or blank-line separated)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -1501,6 +1529,8 @@ def main(argv=None):
         return _add(args)
     if args.branch == "describe":
         return _describe(args)
+    if args.branch == "import":
+        return _import(args)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:
