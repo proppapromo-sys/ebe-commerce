@@ -529,6 +529,13 @@ class Store:
         cur = self._cx.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
         return [dict(row) for row in cur.fetchall()]
 
+    def last_event(self, kind) -> dict | None:
+        """The most recent event of a kind (e.g. 'autopilot'), or None if never."""
+        cur = self._cx.execute(
+            "SELECT * FROM events WHERE kind=? ORDER BY id DESC LIMIT 1", (kind,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
 
 def product_as_item(p: dict) -> dict:
     """Shape a stored product row like the items the genome branches expect."""
