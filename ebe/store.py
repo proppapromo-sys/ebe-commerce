@@ -544,6 +544,15 @@ class Store:
         cur = self._cx.execute("SELECT note FROM events WHERE kind='channel_order'")
         return {row["note"] for row in cur.fetchall() if row["note"]}
 
+    def sale_events(self, since=None) -> list:
+        """All recorded sale events (kind='sale'), optionally only since a unix ts."""
+        if since is not None:
+            cur = self._cx.execute(
+                "SELECT * FROM events WHERE kind='sale' AND ts>=? ORDER BY id", (since,))
+        else:
+            cur = self._cx.execute("SELECT * FROM events WHERE kind='sale' ORDER BY id")
+        return [dict(row) for row in cur.fetchall()]
+
     def record_channel_order(self, key, revenue=0) -> None:
         """Mark a channel order as recorded (idempotency key + its revenue)."""
         self._log("channel_order", note=key, qty=int(round(revenue or 0)))
