@@ -1186,6 +1186,41 @@ def _add(args):
     print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
 
 
+def _score(args):
+    """Score the catalog by true edge + margin-after-fees — what to push, what to drop."""
+    from .store import Store
+    from .sourcing_rank import rank_candidates, summarize
+    from .profile import PROFILES
+    s = Store(_db_path(args))
+    prods = s.products()
+    if not prods:
+        raise SystemExit("no catalog yet — run `python -m ebe add ...` or `import` first")
+    prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
+    fee = PRESETS[args.fees]
+    items = [{"id": p["sku"], "name": p.get("name") or p["sku"], "category": p.get("category"),
+              "cost": p.get("cost") or 0, "sell": p.get("sell") or 0,
+              "monthly_sales": p.get("monthly_sales") or 0} for p in prods]
+    ranked = rank_candidates(items, prof, fee)
+    summ = summarize(ranked)
+    print("\n══ EBE COMMAND · CATALOG SCORE (%s · fees %s) ══" % (prof.name, fee.name))
+    print("  %d product(s) · %d CORNER · %d STRONG · $%.0f/mo combined profit potential\n"
+          % (summ["count"], summ["corner"], summ["strong"], summ["monthly_profit"]))
+    print("  %-26s %7s %7s %6s %5s  %-7s %s" % ("product", "cost", "sell", "margin", "EDGE", "verdict", "$/mo"))
+    for r in ranked:
+        print("  %-26s %7.2f %7.2f %5.0f%% %4.0f%%  %-7s $%.0f"
+              % (r["name"][:26], r["cost"], r["sell"], r["margin"] * 100,
+                 r["composite"] * 100, r["verdict"], r["monthly_profit"]))
+    winners = [r["name"] for r in ranked if r["verdict"] in ("CORNER", "STRONG")]
+    dogs = [r["name"] for r in ranked if r["verdict"] == "pass" or r["net_unit"] <= 0]
+    print()
+    if winners:
+        print("  🏆 PUSH HARD: %s" % ", ".join(w[:22] for w in winners[:4]))
+    if dogs:
+        print("  🐢 RECONSIDER (thin/negative margin): %s" % ", ".join(d[:22] for d in dogs[:4]))
+    if not winners and not dogs:
+        print("  Solid mid-pack — test small, double down on what sells.")
+
+
 def _import(args):
     """Bulk-import pasted supplier listings into the catalog (AI Ears parses each)."""
     from .store import Store
@@ -1340,8 +1375,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1531,6 +1566,8 @@ def main(argv=None):
         return _describe(args)
     if args.branch == "import":
         return _import(args)
+    if args.branch == "score":
+        return _score(args)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:
