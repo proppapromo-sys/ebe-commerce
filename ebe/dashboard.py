@@ -25,6 +25,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 NAV = [("/brief", "Brief", "brief"), ("/act", "Act", "act"), ("/", "Today", "today"),
+       ("/catalog", "Catalog", "catalog"),
        ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
@@ -491,6 +492,135 @@ def _do_po(args, qs):
         pass
 
 
+# ── CATALOG page (manage products + publish to channels, all from EBE) ───────
+def render_catalog(args, msg=""):
+    from .store import Store, DEFAULT_DB
+    from . import sync as syncmod
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    prods = store.products()
+    p = urllib.parse.quote(args.profile or "generic")
+    chans = syncmod.configured_channels()
+    shop_on = "shopify" in chans
+
+    inner = ["<h2>📦 Catalog — your single source of truth</h2>"]
+    inner.append("<div class=sub>Add a product once here, push it to your channels. No spreadsheets, no logging into Shopify.</div>")
+    if msg:
+        inner.append("<div class='card %s'>%s</div>" % ("ok" if not msg.startswith("✕") else "warn", _esc(msg)))
+
+    inv = sum((pr.get("on_hand") or 0) * (pr.get("cost") or 0) for pr in prods)
+    inner.append(
+        "<div class=metrics>"
+        "<div class=metric><div class=k>Products</div><div class=v data-count='%d'>0</div></div>"
+        "<div class=metric><div class=k>Inventory value</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric %s'><div class=k>Shopify</div><div class=v style='font-size:20px'>%s</div></div>"
+        "</div>" % (len(prods), round(inv), "go" if shop_on else "alert",
+                    "connected" if shop_on else "off"))
+
+    # channel actions
+    if shop_on:
+        inner.append(
+            "<div class=card>"
+            "<a class='btn go' href='/catalog-publish?profile=%s'>⬆ Publish catalog → Shopify</a> "
+            "<a class='btn' href='/catalog-sync?profile=%s'>🔄 Sync from Shopify</a>"
+            "<div class=sub>Publish creates any product missing from Shopify (needs write_products). "
+            "Sync pulls live stock + price back into EBE.</div></div>" % (p, p))
+    else:
+        inner.append("<div class='card warn'>Shopify not connected — add SHOPIFY_STORE + "
+                     "SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET to .env, then this tab can publish & sync.</div>")
+
+    # add / update form (GET so it matches the dashboard's action pattern)
+    inner.append("""
+<div class=card>
+<h2 style='margin-top:0'>＋ Add / update a product</h2>
+<form action='/catalog-add' method=get class=addform>
+  <input type=hidden name=profile value='%s'>
+  <input name=sku placeholder='SKU (e.g. COCO-CHARCOAL-1.2KG)' required>
+  <input name=name placeholder='Product name'>
+  <input name=cost type=number step='0.01' placeholder='Cost $'>
+  <input name=sell type=number step='0.01' placeholder='Sell $'>
+  <input name=on_hand type=number placeholder='On hand'>
+  <input name=monthly type=number placeholder='Sales / mo'>
+  <button class='btn go' type=submit>Save</button>
+</form>
+<div class=sub>Existing SKU? Only the fields you fill change — the rest stay as they were.</div>
+</div>
+<style>
+.addform{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.addform input{font:600 13px var(--hud);color:#eaffff;background:#04141b;border:1px solid #1f4a57;
+  border-radius:8px;padding:9px 11px;min-width:130px}
+.addform input:focus{outline:none;border-color:var(--cyan)}
+.addform input::placeholder{color:#5d8794}
+</style>""" % p)
+
+    if prods:
+        inner.append("<h2>Your products</h2>")
+        inner.append("<table><tr><th>SKU<th>name<th class=r>cost<th class=r>sell<th class=r>on hand<th class=r>/mo<th class=r>margin</tr>")
+        for pr in prods:
+            cost, sell = pr.get("cost") or 0, pr.get("sell") or 0
+            margin = ((sell - cost) / sell * 100) if sell else 0
+            mcls = "ok" if margin >= 30 else ("warn" if margin >= 10 else "alert")
+            inner.append("<tr><td><b>%s</b><td>%s<td class=r>$%.2f<td class=r>$%.2f<td class=r>%d<td class=r>%d<td class='r %s'>%.0f%%</tr>"
+                         % (_esc(pr["sku"]), _esc(pr.get("name") or ""), cost, sell,
+                            pr.get("on_hand") or 0, pr.get("monthly_sales") or 0, mcls, margin))
+        inner.append("</table>")
+    else:
+        inner.append("<div class=card>No products yet — add your first one above.</div>")
+    return _shell(_ctx_from_args(args), "catalog", "".join(inner))
+
+
+def _do_catalog_add(args, qs):
+    """Upsert one product from the form. Returns a status message."""
+    from .store import Store, DEFAULT_DB
+    sku = (qs.get("sku") or [""])[0].strip()
+    if not sku:
+        return "✕ SKU is required"
+    db = getattr(args, "db", None) or DEFAULT_DB
+    store = Store(db)
+    existing = store.product(sku)
+    row = dict(existing) if existing else {}
+    row["sku"] = sku
+    for field, col, cast in (("name", "name", str), ("cost", "cost", float), ("sell", "sell", float),
+                             ("on_hand", "on_hand", int), ("monthly", "monthly_sales", int)):
+        raw = (qs.get(field) or [""])[0].strip()
+        if raw:
+            try:
+                row[col] = cast(raw)
+            except ValueError:
+                pass
+    store.upsert_products([row])
+    return "%s %s" % ("✓ updated" if existing else "✓ added", sku)
+
+
+def _do_catalog_publish(args):
+    """Publish the catalog to Shopify. Returns a status message."""
+    from .store import Store, DEFAULT_DB
+    from .publish import publish_catalog
+    from .adapters.shopify import ShopifyClient
+    db = getattr(args, "db", None) or DEFAULT_DB
+    try:
+        res = publish_catalog(Store(db), ShopifyClient())
+    except Exception as e:
+        return "✕ publish failed: %s" % e
+    bits = "✓ published — %d created, %d already live" % (len(res["created"]), len(res["skipped"]))
+    if res["failed"]:
+        bits += ", %d failed (%s)" % (len(res["failed"]), res["failed"][0][1][:60])
+    return bits
+
+
+def _do_catalog_sync(args):
+    """Pull live Shopify stock + price into EBE. Returns a status message."""
+    from .store import Store, DEFAULT_DB
+    from .sync import sync_stock
+    from .adapters.shopify import ShopifyClient
+    db = getattr(args, "db", None) or DEFAULT_DB
+    try:
+        res = sync_stock(Store(db), ShopifyClient(), prices=True)
+    except Exception as e:
+        return "✕ sync failed: %s" % e
+    return "✓ synced — %d SKU(s) updated, %d unknown" % (len(res["updated"]), len(res["unknown"]))
+
+
 # ── BRIEF page (the morning rundown) ─────────────────────────────────────────
 def render_brief(args):
     from . import brief as briefmod
@@ -940,6 +1070,17 @@ def serve(args):
                 _do_act(args, qs)
                 prof = (qs.get("profile") or ["generic"])[0]
                 self.send_response(303); self.send_header("Location", "/act?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
+            if path in ("/catalog-add", "/catalog-publish", "/catalog-sync"):
+                a = _req_args(args, query)
+                if path == "/catalog-add":
+                    msg = _do_catalog_add(a, qs)
+                elif path == "/catalog-publish":
+                    msg = _do_catalog_publish(a)
+                else:
+                    msg = _do_catalog_sync(a)
+                prof = (qs.get("profile") or ["generic"])[0]
+                loc = "/catalog?profile=%s&msg=%s" % (urllib.parse.quote(prof), urllib.parse.quote(msg))
+                self.send_response(303); self.send_header("Location", loc); self.end_headers(); return
             a = _req_args(args, query)
             try:
                 if path in ("/", ""):
@@ -948,6 +1089,8 @@ def serve(args):
                     body = render_brief(a)
                 elif path == "/act":
                     body = render_act(a)
+                elif path == "/catalog":
+                    body = render_catalog(a, (qs.get("msg") or [""])[0])
                 elif path == "/rebuy":
                     body = render_rebuy(a)
                 elif path == "/reprice":
