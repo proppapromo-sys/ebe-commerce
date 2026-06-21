@@ -523,10 +523,12 @@ def render_catalog(args, msg=""):
             "<div class=card>"
             "<a class='btn go' href='/catalog-publish?profile=%s'>⬆ Publish new → Shopify</a> "
             "<a class='btn' href='/catalog-publish?update=1&profile=%s'>↻ Update listings</a> "
+            "<a class='btn' href='/catalog-describe?profile=%s'>✨ AI write descriptions</a> "
             "<a class='btn' href='/catalog-sync?profile=%s'>🔄 Sync from Shopify</a>"
             "<div class=sub>Publish creates products missing from Shopify; Update refreshes "
             "title/description/price/photo on existing ones (needs write_products). "
-            "Sync pulls live stock + price back into EBE.</div></div>" % (p, p, p))
+            "AI writes descriptions for products missing one. "
+            "Sync pulls live stock + price back into EBE.</div></div>" % (p, p, p, p))
     else:
         inner.append("<div class='card warn'>Shopify not connected — add SHOPIFY_STORE + "
                      "SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET to .env, then this tab can publish & sync.</div>")
@@ -612,6 +614,21 @@ def _do_catalog_publish(args, update=False):
     if res["failed"]:
         bits += ", %d failed (%s)" % (len(res["failed"]), res["failed"][0][1][:60])
     return bits
+
+
+def _do_catalog_describe(args):
+    """Have Claude write descriptions for products missing one. Returns a status message."""
+    from .store import Store, DEFAULT_DB
+    from . import copywriter
+    db = getattr(args, "db", None) or DEFAULT_DB
+    try:
+        res = copywriter.describe_into_store(Store(db))
+    except Exception as e:
+        return "✕ AI describe failed: %s" % e
+    msg = "✓ wrote %d description(s), %d already had one" % (len(res["written"]), len(res["skipped"]))
+    if res["failed"]:
+        msg += ", %d failed (%s)" % (len(res["failed"]), res["failed"][0][1][:60])
+    return msg
 
 
 def _do_catalog_sync(args):
@@ -1076,12 +1093,14 @@ def serve(args):
                 _do_act(args, qs)
                 prof = (qs.get("profile") or ["generic"])[0]
                 self.send_response(303); self.send_header("Location", "/act?profile=%s" % urllib.parse.quote(prof)); self.end_headers(); return
-            if path in ("/catalog-add", "/catalog-publish", "/catalog-sync"):
+            if path in ("/catalog-add", "/catalog-publish", "/catalog-sync", "/catalog-describe"):
                 a = _req_args(args, query)
                 if path == "/catalog-add":
                     msg = _do_catalog_add(a, qs)
                 elif path == "/catalog-publish":
                     msg = _do_catalog_publish(a, update=bool(qs.get("update")))
+                elif path == "/catalog-describe":
+                    msg = _do_catalog_describe(a)
                 else:
                     msg = _do_catalog_sync(a)
                 prof = (qs.get("profile") or ["generic"])[0]
