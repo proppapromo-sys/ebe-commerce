@@ -14,6 +14,54 @@ missing ones are created. Re-running is safe — it never duplicates.
 """
 from __future__ import annotations
 
+import re
+
+
+def _plain(text):
+    """Strip HTML to plain text — Amazon descriptions want no markup."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()
+
+
+def amazon_attributes(product, marketplace_id):
+    """A baseline Listings-Items attribute set from a catalog product.
+    Covers the commonly-required fields; some Amazon categories need more."""
+    mp = marketplace_id
+    price = float(product.get("sell") or 0)
+    qty = int(product.get("on_hand") or 0)
+    title = product.get("name") or product["sku"]
+    brand = (product.get("brand") or product.get("supplier") or "Generic")
+    desc = _plain(product.get("description")) or title
+    return {
+        "condition_type": [{"value": "new_new", "marketplace_id": mp}],
+        "item_name": [{"value": title[:200], "marketplace_id": mp}],
+        "brand": [{"value": brand, "marketplace_id": mp}],
+        "manufacturer": [{"value": brand, "marketplace_id": mp}],
+        "product_description": [{"value": desc[:2000], "marketplace_id": mp}],
+        "fulfillment_availability": [{"fulfillment_channel_code": "DEFAULT", "quantity": qty}],
+        "purchasable_offer": [{
+            "marketplace_id": mp, "currency": "USD",
+            "our_price": [{"schedule": [{"value_with_tax": price}]}],
+        }],
+    }
+
+
+def publish_to_amazon(store, client, seller_id, product_type, marketplace_id, only=None) -> dict:
+    """Create/replace catalog listings on Amazon (Listings Items API). PUT is upsert —
+    re-running updates. Returns {created, failed}. Amazon validates strictly per product type."""
+    only = set(only) if only else None
+    created, failed = [], []
+    for p in store.products():
+        sku = p["sku"]
+        if only is not None and sku not in only:
+            continue
+        attrs = amazon_attributes(p, marketplace_id)
+        try:
+            client.put_listing(seller_id, sku, product_type, attrs)
+            created.append(sku)
+        except Exception as e:
+            failed.append((sku, str(e)))
+    return {"created": created, "failed": failed}
+
 
 def publish_catalog(store, client, only=None, set_stock=False, update=False) -> dict:
     """Push the catalog to the channel (matched by SKU).

@@ -14,6 +14,8 @@ turn live stock/price into full profit-after-fees decisions.
 """
 from __future__ import annotations
 
+import urllib.parse
+
 from . import config
 from .base import request_json, AdapterError
 
@@ -59,9 +61,28 @@ class SpApiClient:
         return request_json("GET", self.endpoint + path,
                             headers={"x-amz-access-token": self._token()}, params=params)
 
+    def _put(self, path, body, params=None):
+        return request_json("PUT", self.endpoint + path,
+                            headers={"x-amz-access-token": self._token(),
+                                     "Content-Type": "application/json"},
+                            params=params, json_body=body)
+
     def check(self):
         """Confirms the refresh token exchanges for an access token."""
         return bool(self._token())
+
+    def seller_id(self):
+        """Your selling-partner / merchant id (Seller Central → Account Info → Merchant token)."""
+        return config.get("SPAPI_SELLER_ID")
+
+    def put_listing(self, seller_id, sku, product_type, attributes, requirements="LISTING"):
+        """Create or replace one listing via the Listings Items API (needs Product Listing role).
+        Amazon validates attributes against the product type — strict and category-specific."""
+        body = {"productType": product_type, "requirements": requirements, "attributes": attributes}
+        return self._put(
+            "/listings/2021-08-01/items/%s/%s"
+            % (urllib.parse.quote(str(seller_id)), urllib.parse.quote(str(sku))),
+            body, params={"marketplaceIds": self.marketplace_id})
 
     def fba_inventory(self):
         """FBA stock per SKU (raw inventorySummaries)."""

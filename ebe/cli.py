@@ -1326,17 +1326,45 @@ def _describe(args):
         print("  Now push them live:  python -m ebe publish --channel shopify --update")
 
 
+def _publish_amazon(args, s):
+    """Push catalog listings to Amazon via the Listings Items API."""
+    from .adapters import config
+    from .adapters.amazon_spapi import SpApiClient
+    from .publish import publish_to_amazon
+    seller_id = config.get("SPAPI_SELLER_ID")
+    if not seller_id:
+        raise SystemExit("Amazon publish needs your Merchant token — set it once:\n"
+                         "  python -c \"from ebe.adapters import config; config.set_env('SPAPI_SELLER_ID','A1B2C3...')\"\n"
+                         "  (Seller Central → Settings → Account Info → Merchant token)")
+    product_type = getattr(args, "product_type", None)
+    if not product_type:
+        raise SystemExit("Amazon needs a product type — e.g. --product-type PRODUCT\n"
+                         "  (find yours in Seller Central's category, or the Product Type Definitions API)")
+    client = SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
+    print("\n══ EBE COMMAND · PUBLISH → AMAZON (%s) ══" % product_type)
+    res = publish_to_amazon(s, client, seller_id, product_type, client.marketplace_id)
+    for sku in res["created"]:
+        print("  ＋ submitted  %s" % sku)
+    for sku, err in res["failed"]:
+        print("  ✕ failed     %s — %s" % (sku, err[:70]))
+    print("  ── %d submitted · %d failed" % (len(res["created"]), len(res["failed"])))
+    if res["created"]:
+        print("  Amazon reviews submissions — check status in Seller Central, then: python -m ebe sync --channel amazon")
+
+
 def _publish(args):
     """Push the EBE catalog to a sales channel — create what's missing (matched by SKU)."""
     from .store import Store
     from .publish import publish_catalog
     ch = (getattr(args, "channel", None) or "shopify").lower()
-    if ch != "shopify":
-        raise SystemExit("publish currently supports --channel shopify")
-    from .adapters.shopify import ShopifyClient
     s = Store(_db_path(args))
     if not s.products():
         raise SystemExit("no catalog yet — run `python -m ebe catalog --products YOUR.csv` first")
+    if ch == "amazon":
+        return _publish_amazon(args, s)
+    if ch != "shopify":
+        raise SystemExit("publish supports --channel shopify | amazon")
+    from .adapters.shopify import ShopifyClient
     set_stock = getattr(args, "stock", False)
     update = getattr(args, "update", False)
     print("\n══ EBE COMMAND · PUBLISH → SHOPIFY ══")
@@ -1515,6 +1543,7 @@ def main(argv=None):
     ap.add_argument("--update", action="store_true", help="publish: also update listings already on the channel (title/description/price/photo)")
     ap.add_argument("--overwrite", action="store_true", help="describe: rewrite descriptions even if a product already has one")
     ap.add_argument("--text", help="import: listings inline instead of --file (newline or blank-line separated)")
+    ap.add_argument("--product-type", dest="product_type", help="publish amazon: Amazon product type (e.g. PRODUCT)")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
