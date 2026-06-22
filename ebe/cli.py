@@ -1186,6 +1186,23 @@ def _add(args):
     print("\n  Next:  python -m ebe publish --channel shopify   (list it on your store)")
 
 
+def _product_types(args):
+    """Find the Amazon product type for `publish --channel amazon --product-type ...`."""
+    from .adapters.amazon_spapi import SpApiClient
+    kw = getattr(args, "search", None)
+    if not kw:
+        raise SystemExit('usage: ebe product-types --search "coconut charcoal"')
+    client = SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
+    types = client.search_product_types(kw)
+    print("\n══ EBE COMMAND · AMAZON PRODUCT TYPES (\"%s\") ══" % kw)
+    if not types:
+        print("  no matches — try a broader keyword (e.g. 'charcoal', 'plate', 'accessory')")
+        return
+    for t in types:
+        print("  %-26s %s" % (t["name"], t["displayName"]))
+    print("\n  Use one with:  python -m ebe publish --channel amazon --product-type %s" % types[0]["name"])
+
+
 def _pnl(args):
     """Realized P&L from recorded sales — revenue, COGS, gross profit per SKU."""
     from .store import Store
@@ -1458,8 +1475,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report", "sales", "pnl"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report / sales / pnl")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report", "sales", "pnl", "product-types"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report / sales / pnl / product-types")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1544,6 +1561,7 @@ def main(argv=None):
     ap.add_argument("--overwrite", action="store_true", help="describe: rewrite descriptions even if a product already has one")
     ap.add_argument("--text", help="import: listings inline instead of --file (newline or blank-line separated)")
     ap.add_argument("--product-type", dest="product_type", help="publish amazon: Amazon product type (e.g. PRODUCT)")
+    ap.add_argument("--search", help="product-types: keyword to find an Amazon product type")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
@@ -1662,6 +1680,12 @@ def main(argv=None):
             raise SystemExit("sales failed: %s\n(run `python -m ebe check`)" % e)
     if args.branch == "pnl":
         return _pnl(args)
+    if args.branch == "product-types":
+        from .adapters.base import AdapterError
+        try:
+            return _product_types(args)
+        except AdapterError as e:
+            raise SystemExit("product-types failed: %s\n(run `python -m ebe check`)" % e)
     if args.branch == "publish":
         from .adapters.base import AdapterError
         try:

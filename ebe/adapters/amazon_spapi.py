@@ -75,6 +75,14 @@ class SpApiClient:
         """Your selling-partner / merchant id (Seller Central → Account Info → Merchant token)."""
         return config.get("SPAPI_SELLER_ID")
 
+    def search_product_types(self, keywords):
+        """Amazon product types matching keywords (Product Type Definitions API).
+        Returns [{name, displayName}] — the `name` is what `publish --product-type` wants."""
+        data = self._get("/definitions/2020-09-01/productTypes", params={
+            "keywords": keywords, "marketplaceIds": self.marketplace_id,
+        })
+        return product_types_from_payload(data)
+
     def put_listing(self, seller_id, sku, product_type, attributes, requirements="LISTING"):
         """Create or replace one listing via the Listings Items API (needs Product Listing role).
         Amazon validates attributes against the product type — strict and category-specific."""
@@ -103,6 +111,16 @@ class SpApiClient:
 
 
 # ── mapping (pure; verified against live shapes on first real call) ──────────
+def product_types_from_payload(data):
+    """Product Type Definitions search payload -> [{name, displayName}]."""
+    out = []
+    for pt in (data or {}).get("productTypes", []) or []:
+        name = pt.get("name")
+        if name:
+            out.append({"name": name, "displayName": pt.get("displayName") or name})
+    return out
+
+
 def inventory_to_stock(summaries):
     """inventorySummaries -> {sku: total_units}."""
     out = {}
