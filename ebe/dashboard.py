@@ -244,10 +244,8 @@ def _shell(ctx, current, inner, refresh=False):
         "<span class=orb><i class=orb-aura></i><i class=orb-ring2></i><i class=orb-ring></i>"
         "<i class=orb-sat></i><i class=orb-core></i></span>" + bname +
         "<span class=orbname>EBE&nbsp;ORB</span></div>"
-        +
         "<div class=status><span class=dot></span>EBE ORB ONLINE<span class=sep>·</span>"
-        "<span id=clock>--:--:--</span><span class=sep>·</span>%s<span class=sep>·</span>%s</div></header>"
-        % (_esc(ctx["pname"]), _esc(ctx["fee"])))
+        "<span id=clock>--:--:--</span></div></header>")
     head.append("<nav class=nav>%s</nav>" % nav)
     head.append("<div class='wrap switchline'>switch profile → %s</div>" % profs)
     return "".join(head) + "<main class=wrap>" + inner + "</main>" + _JS + "</body></html>"

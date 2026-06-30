@@ -228,10 +228,25 @@ def serve(args):
                 dashboard._do_price(a, qs); self._redirect("/reprice?profile=%s" % a.profile); return None
             if path == "/do":
                 dashboard._do_act(a, qs); self._redirect("/act?profile=%s" % a.profile); return None
+            # Catalog write actions — apply to the tenant's own DB, then back to /catalog
+            if path in ("/catalog-add", "/catalog-publish", "/catalog-sync", "/catalog-describe"):
+                if path == "/catalog-add":
+                    msg = dashboard._do_catalog_add(a, qs)
+                elif path == "/catalog-publish":
+                    msg = dashboard._do_catalog_publish(a, update=bool(qs.get("update")))
+                elif path == "/catalog-describe":
+                    msg = dashboard._do_catalog_describe(a)
+                else:
+                    msg = dashboard._do_catalog_sync(a)
+                self._redirect("/catalog?profile=%s&msg=%s"
+                               % (a.profile, urllib.parse.quote(msg))); return None
             pages = {
                 "/": lambda: dashboard.render(dashboard._data(a)),
                 "/brief": lambda: dashboard.render_brief(a),
+                "/report": lambda: dashboard.render_report(a),
                 "/act": lambda: dashboard.render_act(a),
+                "/catalog": lambda: dashboard.render_catalog(a, (qs.get("msg") or [""])[0]),
+                "/pnl": lambda: dashboard.render_pnl(a),
                 "/rebuy": lambda: dashboard.render_rebuy(a),
                 "/reprice": lambda: dashboard.render_reprice(a),
                 "/source": lambda: dashboard.render_source(a, (qs.get("cand") or [""])[0]),
@@ -281,18 +296,25 @@ def serve(args):
 
     # In-process autopilot: run the loop for every entitled tenant on a timer (cloud-safe —
     # shares the web service's disk). Enable with EBE_AUTOPILOT_MINUTES (0/unset = off).
-    mins = int(os.environ.get("EBE_AUTOPILOT_MINUTES") or 0)
+    # Wrapped so a scheduler problem can NEVER stop the web server from booting.
+    try:
+        mins = int(os.environ.get("EBE_AUTOPILOT_MINUTES") or 0)
+    except ValueError:
+        mins = 0
     if mins > 0:
-        from . import scheduler, autopilot
-        from .store import Store
-        sched_tn = tenancy.Tenants()            # dedicated connection for the scheduler thread
-        scheduler.start(
-            mins,
-            tenants=lambda: [t for t in sched_tn.list_tenants() if sched_tn.is_entitled(t["id"])],
-            store_factory=lambda t: Store(t["db_path"]),
-            cycle_fn=lambda s: autopilot.cycle(s),
-        )
-        print("[autopilot] in-process scheduler ON · every %dm" % mins)
+        try:
+            from . import scheduler, autopilot
+            from .store import Store
+            sched_tn = tenancy.Tenants()        # dedicated connection for the scheduler thread
+            scheduler.start(
+                mins,
+                tenants=lambda: [t for t in sched_tn.list_tenants() if sched_tn.is_entitled(t["id"])],
+                store_factory=lambda t: Store(t["db_path"]),
+                cycle_fn=lambda s: autopilot.cycle(s),
+            )
+            print("[autopilot] in-process scheduler ON · every %dm" % mins)
+        except Exception as e:
+            print("[autopilot] disabled (start failed, web server still up): %s" % e)
 
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     srv.daemon_threads = True
