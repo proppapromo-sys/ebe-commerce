@@ -247,7 +247,6 @@ def _shell(ctx, current, inner, refresh=False):
         "<div class=status><span class=dot></span>EBE ORB ONLINE<span class=sep>·</span>"
         "<span id=clock>--:--:--</span></div></header>")
     head.append("<nav class=nav>%s</nav>" % nav)
-    head.append("<div class='wrap switchline'>switch profile → %s</div>" % profs)
     return "".join(head) + "<main class=wrap>" + inner + "</main>" + _JS + "</body></html>"
 
 
@@ -396,21 +395,51 @@ def render(d):
     return _shell(ctx, "today", _today_inner(d), refresh=True)
 
 
+def _onboarding_inner():
+    """Clean, generic welcome for a brand-new account — no sample data, no niche."""
+    from . import sync as syncmod
+    chans = syncmod.configured_channels()
+    cmark = lambda n: ("✓ " if n in chans else "○ ") + n
+    return (
+        "<h2>👋 Welcome to your store</h2>"
+        "<div class=card><span class=big>Let's get you live in 3 steps.</span>"
+        "<div class=sub>Your dashboard fills in as you add products and connect channels.</div></div>"
+        "<div class=metrics>"
+        "<div class=metric><div class=k>Step 1</div><div class=v style='font-size:18px'>Add products</div></div>"
+        "<div class=metric><div class=k>Step 2</div><div class=v style='font-size:18px'>Connect a channel</div></div>"
+        "<div class=metric><div class=k>Step 3</div><div class=v style='font-size:18px'>Publish & sync</div></div>"
+        "</div>"
+        "<div class=card><b>1 · Add your first product</b>"
+        "<div class=sub>Open the <b>Catalog</b> tab → add a product (name, cost, price), "
+        "or bulk-import a supplier list.</div>"
+        "<div style='margin-top:9px'><a class='btn go' href='/catalog'>Go to Catalog →</a></div></div>"
+        "<div class=card><b>2 · Connect a sales channel</b>"
+        "<div class=sub>Add your channel keys so EBE syncs live stock, prices, and orders. "
+        "Status: %s &nbsp; %s</div></div>"
+        "<div class=card><b>3 · Publish & let it run</b>"
+        "<div class=sub>Publish your catalog to your store, then autopilot keeps stock true and "
+        "raises re-buys on its own.</div></div>"
+        % (cmark("shopify"), cmark("amazon"))
+    )
+
+
+def render_home(args):
+    """Today page — a clean onboarding welcome for empty accounts, the live board once stocked."""
+    from .store import Store, DEFAULT_DB
+    db = getattr(args, "db", None) or DEFAULT_DB
+    if not Store(db).products():
+        return _shell(_ctx_from_args(args), "today", _onboarding_inner())
+    return render(_data(args))
+
+
 # ── RE-BUY page (live database + autobuy) ────────────────────────────────────
 def _store_for(args):
-    """The real database if it has a catalog; else an in-memory sample so the tab demos."""
+    """The tenant's real database. Empty is fine — tabs show clean empty states + an
+    'add your catalog' prompt (no niche/sample data, so new accounts start blank)."""
     from .store import Store, DEFAULT_DB
     db = getattr(args, "db", None) or DEFAULT_DB
     store = Store(db)
-    if store.products():
-        return store, True, db
-    import os
-    from .catalog.csv_io import load_store_rows
-    demo = Store(":memory:")
-    sample = os.path.join(os.path.dirname(__file__), "..", "examples", "products.csv")
-    if os.path.exists(sample):
-        demo.upsert_products(load_store_rows(sample))
-    return demo, False, db
+    return store, bool(store.products()), db
 
 
 def render_rebuy(args):
@@ -1222,7 +1251,7 @@ def serve(args):
             a = _req_args(args, query)
             try:
                 if path in ("/", ""):
-                    body = render(_data(a))
+                    body = render_home(a)
                 elif path == "/brief":
                     body = render_brief(a)
                 elif path == "/report":

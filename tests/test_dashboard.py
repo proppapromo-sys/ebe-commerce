@@ -59,14 +59,17 @@ class DashboardRenderTests(unittest.TestCase):
     def test_rebuy_tab_renders_proposals(self):
         import os
         import tempfile
+        from ebe.store import Store
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        os.remove(path)                                    # empty db → demo on sample catalog
         try:
+            s = Store(path)                                # real catalog: one SKU under the line
+            s.upsert_products([{"sku": "A", "name": "Widget", "cost": 2, "sell": 10,
+                                "on_hand": 0, "monthly_sales": 300, "lead_time_days": 14}])
+            s.close()
             page = dashboard.render_rebuy(_args(db=path))
             self.assertIn("Auto re-buy", page)
-            self.assertIn("Proposed re-buys", page)        # sample has SKUs under the line
-            self.assertIn("sample", page)                  # banner: not live yet
+            self.assertIn("Proposed re-buys", page)        # A is under the reorder line
         finally:
             if os.path.exists(path):
                 os.remove(path)

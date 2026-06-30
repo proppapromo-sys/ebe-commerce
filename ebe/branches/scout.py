@@ -26,16 +26,16 @@ def sample_market() -> list:
     """A spread of candidate products across categories so the landscape is visible.
     Swap for `discover` output (Keepa) to scout a live market."""
     return [
-        {"id": "hk_tips",   "name": "Disposable hookah mouth tips", "category": "hookah",  "sell": 15, "cost": 3,  "monthly_sales": 600,  "competition": 0.30},
-        {"id": "hk_foil",   "name": "Pre-cut hookah foil",          "category": "hookah",  "sell": 13, "cost": 4,  "monthly_sales": 800,  "competition": 0.35},
-        {"id": "hk_coco",   "name": "Coconut charcoal",            "category": "hookah",  "sell": 22, "cost": 9,  "monthly_sales": 1200, "competition": 0.50},
-        {"id": "bar_tray",  "name": "Garnish / VIP trays",         "category": "bar",     "sell": 26, "cost": 8,  "monthly_sales": 200,  "competition": 0.40},
-        {"id": "bar_cup",   "name": "Specialty bar cups",          "category": "bar",     "sell": 19, "cost": 6,  "monthly_sales": 500,  "competition": 0.60},
-        {"id": "to_clam",   "name": "Premium takeout clamshell",   "category": "takeout", "sell": 40, "cost": 18, "monthly_sales": 300,  "competition": 0.70},
-        {"id": "hm_org",    "name": "Drawer organizer set",        "category": "home",    "sell": 25, "cost": 7,  "monthly_sales": 900,  "competition": 0.85},
-        {"id": "kt_chop",   "name": "Vegetable chopper",           "category": "kitchen", "sell": 24, "cost": 6,  "monthly_sales": 1500, "competition": 0.90},
-        {"id": "pet_bowl",  "name": "Slow-feeder dog bowl",        "category": "pet",     "sell": 18, "cost": 5,  "monthly_sales": 700,  "competition": 0.60},
-        {"id": "ft_band",   "name": "Resistance bands set",        "category": "fitness", "sell": 20, "cost": 4,  "monthly_sales": 1100, "competition": 0.88},
+        {"id": "cl_sponge", "name": "Microfiber cleaning cloths",   "category": "home",    "sell": 15, "cost": 3,  "monthly_sales": 600,  "competition": 0.30},
+        {"id": "st_bags",   "name": "Reusable storage bags",        "category": "kitchen", "sell": 13, "cost": 4,  "monthly_sales": 800,  "competition": 0.35},
+        {"id": "pet_waste", "name": "Pet waste bags (refill)",      "category": "pet",     "sell": 22, "cost": 9,  "monthly_sales": 1200, "competition": 0.50},
+        {"id": "of_pens",   "name": "Gel pens (bulk pack)",         "category": "office",  "sell": 26, "cost": 8,  "monthly_sales": 200,  "competition": 0.40},
+        {"id": "kt_filter", "name": "Replacement water filters",    "category": "kitchen", "sell": 19, "cost": 6,  "monthly_sales": 500,  "competition": 0.60},
+        {"id": "hm_box",    "name": "Storage boxes (set)",          "category": "home",    "sell": 40, "cost": 18, "monthly_sales": 300,  "competition": 0.70},
+        {"id": "hm_org",    "name": "Drawer organizer set",         "category": "home",    "sell": 25, "cost": 7,  "monthly_sales": 900,  "competition": 0.85},
+        {"id": "kt_chop",   "name": "Vegetable chopper",            "category": "kitchen", "sell": 24, "cost": 6,  "monthly_sales": 1500, "competition": 0.90},
+        {"id": "pet_bowl",  "name": "Slow-feeder dog bowl",         "category": "pet",     "sell": 18, "cost": 5,  "monthly_sales": 700,  "competition": 0.60},
+        {"id": "ft_band",   "name": "Resistance bands set",         "category": "fitness", "sell": 20, "cost": 4,  "monthly_sales": 1100, "competition": 0.88},
     ]
 
 

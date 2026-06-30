@@ -26,24 +26,28 @@ class ScoutEdgeTests(unittest.TestCase):
 
 
 class ScoutRunTests(unittest.TestCase):
+    # explicit fixture: a thin-ROI item in the hookah operator's own turf, plus a generic one.
+    ROWS = [
+        {"id": "hk_coco", "name": "Coconut charcoal", "category": "hookah", "sell": 22, "cost": 9,
+         "monthly_sales": 1200, "competition": 0.50},
+        {"id": "kt_chop", "name": "Vegetable chopper", "category": "kitchen", "sell": 24, "cost": 6,
+         "monthly_sales": 1500, "competition": 0.90},
+    ]
+
     def test_personalisation_changes_the_shortlist(self):
-        rows = sample_market()
-        hookah_ids = {t[0]["id"] for t in scout.build(rows, PROFILES["hookah"], AMAZON_FBA).cycle()}
-        generic_ids = {t[0]["id"] for t in scout.build(rows, PROFILES["generic"], AMAZON_FBA).cycle()}
-        # the hookah operator pursues hookah lanes the generic seller's thinner-margin gate skips
+        hookah_ids = {t[0]["id"] for t in scout.build(self.ROWS, PROFILES["hookah"], AMAZON_FBA).cycle()}
+        generic_ids = {t[0]["id"] for t in scout.build(self.ROWS, PROFILES["generic"], AMAZON_FBA).cycle()}
+        # the hookah operator pursues a hookah lane the generic seller's thinner-margin gate skips
         self.assertIn("hk_coco", hookah_ids)               # thin ROI, but their advantage clears it
         self.assertNotIn("hk_coco", generic_ids)
         self.assertNotEqual(hookah_ids, generic_ids)
 
     def test_landscape_ranks_by_roi_plus_fit(self):
-        rows = sample_market()
-        lm = landscape(rows, PROFILES["hookah"], AMAZON_FBA)
+        lm = landscape(self.ROWS, PROFILES["hookah"], AMAZON_FBA)
         cats = [r["category"] for r in lm]
-        # every category is summarised exactly once
-        self.assertEqual(len(cats), len(set(cats)))
-        # hookah carries the operator's advantage in the map
+        self.assertEqual(len(cats), len(set(cats)))        # every category summarised once
         hk = next(r for r in lm if r["category"] == "hookah")
-        self.assertEqual(hk["fit"], 0.30)
+        self.assertEqual(hk["fit"], 0.30)                  # hookah carries the operator's advantage
 
 
 if __name__ == "__main__":

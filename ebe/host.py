@@ -49,7 +49,7 @@ def _tenant_args(tenant, qs):
     return types.SimpleNamespace(
         fees="amazon-fba", products=None, costs=None, journal=None, capital=None,
         port=None, strategy=None, db=tenant["db_path"],
-        profile=(qs.get("profile") or ["hookah"])[0])
+        profile=(qs.get("profile") or ["generic"])[0])
 
 
 def _page(title, inner):
@@ -241,7 +241,7 @@ def serve(args):
                 self._redirect("/catalog?profile=%s&msg=%s"
                                % (a.profile, urllib.parse.quote(msg))); return None
             pages = {
-                "/": lambda: dashboard.render(dashboard._data(a)),
+                "/": lambda: dashboard.render_home(a),
                 "/brief": lambda: dashboard.render_brief(a),
                 "/report": lambda: dashboard.render_report(a),
                 "/act": lambda: dashboard.render_act(a),
