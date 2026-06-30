@@ -1,0 +1,29 @@
+# Render blueprint — deploy EBE as an always-on web service (no PC, no tunnel).
+# In Render: New + → Blueprint → connect this repo → pick your branch → Apply.
+# Then set EBE_OWNER_PASSWORD in the dashboard, and add a custom domain (app.ebehq.com).
+services:
+  - type: web
+    name: ebe
+    runtime: python
+    plan: starter                 # Starter ($7/mo) supports a persistent disk + always-on
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m ebe host        # binds 0.0.0.0:$PORT, has login
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      - key: EBE_DATA_DIR         # all SQLite DBs live on the persistent disk
+        value: /data
+      - key: EBE_HOST_SECRET      # signs session cookies
+        generateValue: true
+      - key: EBE_OWNER_PASSWORD   # set this in the Render dashboard (secret)
+        sync: false
+      - key: EBE_BRAND
+        value: EBE OS             # flip to "EBE Command" in 2 weeks
+      - key: EBE_AUTOPILOT_MINUTES
+        value: "60"               # in-process autopilot every hour (0 = off)
+    disk:
+      name: ebe-data
+      mountPath: /data
+      sizeGB: 1

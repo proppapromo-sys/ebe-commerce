@@ -1,0 +1,4 @@
+# EBE core is pure Python stdlib — nothing required to run.
+# The only optional dependency powers the AI features (Orb report, AI descriptions).
+# Listed here so the hosted (Render) deploy has AI on; set ANTHROPIC_API_KEY to enable.
+anthropic

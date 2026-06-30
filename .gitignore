@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.DS_Store
+
+# EBE system-of-record databases (local)
+*.db
+ebe.db
+
+# EBE licensing — owner secret + client token (never commit)
+owner_private.key
+license.key
+ebe/license_pub.json
+
+# EBE hosted SaaS — control DB + per-tenant data (never commit)
+ebe_tenants.db
+tenants/
+
+# EBE delivery artifacts — git bundles sent to the user, not source
+*.bundle
