@@ -426,12 +426,72 @@ def _onboarding_inner():
 
 
 def render_home(args):
-    """Today page — a clean onboarding welcome for empty accounts, the live board once stocked."""
+    """Today page — onboarding welcome when empty, the client's REAL store once stocked.
+    No sample data: every number here is theirs."""
     from .store import Store, DEFAULT_DB
+    from .fees import PRESETS, AMAZON_FBA
+    from . import autobuy, alerts as alertsmod, pnl as pnlmod, membership as memb
     db = getattr(args, "db", None) or DEFAULT_DB
-    if not Store(db).products():
+    store = Store(db)
+    prods = store.products()
+    if not prods:
         return _shell(_ctx_from_args(args), "today", _onboarding_inner())
-    return render(_data(args))
+
+    fee = PRESETS.get(getattr(args, "fees", "") or "", AMAZON_FBA)
+    prof = getattr(args, "profile", "generic") or "generic"
+    proposals = autobuy.plan(store)
+    pl = pnlmod.compute(store, days=30)
+    tot = pl["totals"]
+    al = alertsmod.scan(store, profile=prof, fee=fee)
+    tier = memb.status(store)
+    inv_value = sum((p.get("on_hand") or 0) * (p.get("cost") or 0) for p in prods)
+    cash_to_commit = sum(x["cash"] for x in proposals)
+    money = lambda v: "{:,.0f}".format(v or 0)
+
+    inner = ["<h2>🎯 Today</h2>"]
+    inner.append(
+        "<div class=card><span class=big>Good morning.</span> %s <b>%s</b> member · "
+        "$%s revenue in the last 30 days.</div>"
+        % (tier["tier"]["icon"], _esc(tier["tier"]["name"]), money(tot["revenue"])))
+
+    inner.append(
+        "<div class=metrics>"
+        "<div class=metric><div class=k>Products</div><div class=v data-count='%d'>0</div></div>"
+        "<div class='metric alert'><div class=k>Need restock</div><div class=v data-count='%d'>0</div></div>"
+        "<div class=metric><div class=k>Revenue 30d</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class='metric go'><div class=k>Gross profit 30d</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "<div class=metric><div class=k>Inventory value</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
+        "</div>" % (len(prods), len(proposals), round(tot["revenue"]),
+                    round(tot["gross"]), round(inv_value)))
+
+    if al:
+        inner.append("<h2>🔔 Needs you</h2>")
+        for a in al[:4]:
+            icon = {"critical": "🔴", "warn": "🟠", "info": "🔵"}.get(a["level"], "•")
+            inner.append("<div class=card>%s %s</div>" % (icon, _esc(a["message"])))
+
+    if proposals:
+        inner.append("<h2>🚚 Restock now</h2>")
+        inner.append("<table><tr><th>product<th class=r>on hand<th class=r>order<th class=r>cash</tr>")
+        for p in proposals[:6]:
+            inner.append("<tr><td>%s<td class=r>%d<td class=r>%d<td class=r>$%s</tr>"
+                         % (_esc(p["name"][:28]), p["on_hand"], p["qty"], money(p["cash"])))
+        inner.append("</table>")
+        inner.append("<div class=card><b>$%s</b> to restock %d product(s) · "
+                     "<a class='btn sm' href='/rebuy'>Review restock →</a></div>"
+                     % (money(cash_to_commit), len(proposals)))
+
+    if pl["rows"]:
+        inner.append("<h2>🏆 Top sellers (30d)</h2>")
+        inner.append("<table><tr><th>product<th class=r>units<th class=r>revenue<th class=r>profit</tr>")
+        for r in pl["rows"][:5]:
+            inner.append("<tr><td>%s<td class=r>%d<td class=r>$%s<td class=r>$%s</tr>"
+                         % (_esc(r["name"][:28]), r["units"], money(r["revenue"]), money(r["gross"])))
+        inner.append("</table>")
+    else:
+        inner.append("<div class=card>No sales recorded yet — connect a channel and sync your orders "
+                     "to see your top sellers here.</div>")
+    return _shell(_ctx_from_args(args), "today", inner if isinstance(inner, str) else "".join(inner))
 
 
 # ── RE-BUY page (live database + autobuy) ────────────────────────────────────
