@@ -28,6 +28,19 @@ FEATURES = {
 }
 
 
+# nav tab key → required feature (absent = always available on every plan)
+TAB_FEATURES = {
+    "discover": "discover",        # Growth+
+    "report":   "ai_reports",      # Growth+ (AI Orb report)
+}
+
+
+def tab_allowed(plan_key, nav_key):
+    """May this plan open this dashboard tab?"""
+    feat = TAB_FEATURES.get(nav_key)
+    return True if feat is None else includes(plan_key, feat)
+
+
 def plan(key):
     """The plan dict for a key (defaults to starter on unknown)."""
     return _BY_KEY.get((key or "").lower(), _BY_KEY["starter"])

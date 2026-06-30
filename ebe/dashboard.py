@@ -108,6 +108,8 @@ body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
   box-shadow:0 0 0 1px rgba(57,230,255,.3),0 10px 26px -10px rgba(57,230,255,.6)}
 .nav a.navon{color:#00121a;background:linear-gradient(180deg,#86f0ff,#39e6ff);border-color:#86f0ff;
   box-shadow:0 0 24px -4px var(--cyan)}
+.nav a.locked{opacity:.45;border-style:dashed}
+.nav a.locked:hover{opacity:.8;border-color:var(--amber);box-shadow:none;transform:none}
 
 .wrap{max-width:1160px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
 .switchline{margin:6px auto 10px;color:var(--mut);font-size:12px;letter-spacing:.04em}
@@ -229,9 +231,19 @@ def _parse_sales(text):
 # ── shared HUD shell (top bar + nav + profile switcher) ──────────────────────
 def _shell(ctx, current, inner, refresh=False):
     cap = "" if ctx["capital"] is None else "&capital=%g" % ctx["capital"]
-    nav = "".join("<a class='%s' href='%s?profile=%s%s'>%s</a>"
-                  % ("navon" if k == current else "", path, _esc(ctx["pkey"]), cap, _esc(label))
-                  for path, label, k in NAV)
+    pl = ctx.get("plan")
+    nav_parts = []
+    for path, label, k in NAV:
+        if pl:
+            from . import plans
+            if not plans.tab_allowed(pl, k):       # above the client's plan → locked
+                nav_parts.append("<a class='locked' href='/settings?profile=%s%s' "
+                                 "title='Upgrade to unlock'>🔒 %s</a>"
+                                 % (_esc(ctx["pkey"]), cap, _esc(label)))
+                continue
+        nav_parts.append("<a class='%s' href='%s?profile=%s%s'>%s</a>"
+                         % ("navon" if k == current else "", path, _esc(ctx["pkey"]), cap, _esc(label)))
+    nav = "".join(nav_parts)
     cur_path = next((p for p, _, k in NAV if k == current), "/")
     profs = " · ".join("<a href='%s?profile=%s%s'>%s</a>" % (cur_path, _esc(p), cap, _esc(p))
                        for p in ctx["profiles"])
@@ -258,7 +270,8 @@ def _ctx_from_args(args):
     from .fees import PRESETS
     prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
     return dict(pkey=args.profile or "generic", pname=prof.name, fee=PRESETS[args.fees].name,
-                capital=getattr(args, "capital", None), profiles=sorted(PROFILES))
+                capital=getattr(args, "capital", None), profiles=sorted(PROFILES),
+                plan=getattr(args, "plan", None))
 
 
 # ── TODAY page ───────────────────────────────────────────────────────────────

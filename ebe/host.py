@@ -47,10 +47,27 @@ def _cookie(header, key):
 
 def _tenant_args(tenant, qs):
     return types.SimpleNamespace(
-        id=tenant["id"], name=tenant["name"],
+        id=tenant["id"], name=tenant["name"], plan=tenant["plan"],
         fees="amazon-fba", products=None, costs=None, journal=None, capital=None,
         port=None, strategy=None, db=tenant["db_path"],
         profile=(qs.get("profile") or ["generic"])[0])
+
+
+# nav path → key, for plan-gating a hosted tenant's routes
+_NAV_KEY = {path: k for path, _lbl, k in dashboard.NAV}
+
+
+def _upgrade_page(a, nav_key):
+    from . import plans
+    feat = plans.TAB_FEATURES.get(nav_key)
+    need = plans.plan(plans.upgrade_for(feat)) if feat else None
+    label = next((lbl for _p, lbl, k in dashboard.NAV if k == nav_key), nav_key)
+    msg = ("<h2>🔒 %s is a higher-plan feature</h2>"
+           "<div class=card><span class=big>Upgrade to %s</span> to unlock <b>%s</b>."
+           "<div style='margin-top:9px'><a class='btn go' href='/settings'>See plans →</a></div></div>"
+           % (dashboard._esc(label), dashboard._esc(need["name"] if need else "a higher plan"),
+              dashboard._esc(label)))
+    return dashboard._shell(dashboard._ctx_from_args(a), nav_key, msg)
 
 
 def render_tenant_settings(tn, tid, a, msg=""):
@@ -300,6 +317,11 @@ def serve(args):
                     msg = dashboard._do_catalog_sync(a)
                 self._redirect("/catalog?profile=%s&msg=%s"
                                % (a.profile, urllib.parse.quote(msg))); return None
+            # plan gate: block tabs above the tenant's plan (even via direct URL)
+            from . import plans
+            nav_key = _NAV_KEY.get(path)
+            if nav_key and not plans.tab_allowed(a.plan, nav_key):
+                return _upgrade_page(a, nav_key)
             pages = {
                 "/": lambda: dashboard.render_home(a),
                 "/brief": lambda: dashboard.render_brief(a),
