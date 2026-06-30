@@ -247,6 +247,7 @@ def serve(args):
                 "/act": lambda: dashboard.render_act(a),
                 "/catalog": lambda: dashboard.render_catalog(a, (qs.get("msg") or [""])[0]),
                 "/pnl": lambda: dashboard.render_pnl(a),
+                "/membership": lambda: dashboard.render_membership(a),
                 "/rebuy": lambda: dashboard.render_rebuy(a),
                 "/reprice": lambda: dashboard.render_reprice(a),
                 "/source": lambda: dashboard.render_source(a, (qs.get("cand") or [""])[0]),

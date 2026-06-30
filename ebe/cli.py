@@ -1211,6 +1211,14 @@ def _product_types(args):
     print("\n  Use one with:  python -m ebe publish --channel amazon --product-type %s" % types[0]["name"])
 
 
+def _membership(args):
+    """Your EBE Member tier by monthly revenue — and how far to the next one."""
+    from .store import Store
+    from . import membership
+    s = Store(_db_path(args))
+    print(membership.render_text(membership.status(s)))
+
+
 def _alerts(args):
     """What needs you — stockouts, below-floor pricing, reorders, top sellers."""
     from .store import Store
@@ -1492,8 +1500,8 @@ def _tenant(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ebe", description="EBE Command — risk-first seller engine")
-    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report", "sales", "pnl", "product-types", "alerts"),
-                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report / sales / pnl / product-types / alerts")
+    ap.add_argument("branch", choices=BRANCHES + ("all", "command", "forecast", "dashboard", "storefront", "check", "connections", "shopify-auth", "discover", "venue", "scout", "edges", "arbitrage", "outcome", "ears", "pipeline", "catalog", "rebuy", "orders", "sync", "suppliers", "sell", "po", "brief", "reprice", "vendors", "subs", "ledger", "act", "customers", "statement", "count", "audit", "rank", "channels", "bundle", "scan", "license", "host", "tenant", "autopilot", "status", "publish", "add", "describe", "import", "score", "report", "sales", "pnl", "product-types", "alerts", "membership"),
+                    help="a branch, or: command / forecast / dashboard / storefront / check / connections / shopify-auth / discover / venue / scout / edges / arbitrage / outcome / ears / pipeline / catalog / rebuy / orders / sync / suppliers / sell / po / brief / reprice / vendors / subs / ledger / act / customers / statement / count / audit / rank / channels / bundle / scan / license / host / tenant / autopilot / status / publish / add / describe / import / score / report / sales / pnl / product-types / alerts / membership")
     ap.add_argument("--fees", choices=sorted(PRESETS), default=AMAZON_FBA.name,
                     help="marketplace fee model (default: amazon-fba)")
     ap.add_argument("--place", action="store_true", help="execute cleared tickets (dry-run)")
@@ -1700,6 +1708,8 @@ def main(argv=None):
         return _pnl(args)
     if args.branch == "alerts":
         return _alerts(args)
+    if args.branch == "membership":
+        return _membership(args)
     if args.branch == "product-types":
         from .adapters.base import AdapterError
         try:

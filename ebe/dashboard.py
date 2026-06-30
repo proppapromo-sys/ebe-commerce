@@ -25,7 +25,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 NAV = [("/brief", "Brief", "brief"), ("/report", "Orb Report", "report"), ("/act", "Act", "act"), ("/", "Today", "today"),
-       ("/catalog", "Catalog", "catalog"), ("/pnl", "P&L", "pnl"),
+       ("/catalog", "Catalog", "catalog"), ("/pnl", "P&L", "pnl"), ("/membership", "Member", "membership"),
        ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
        ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
 
@@ -695,6 +695,48 @@ def _do_catalog_sync(args):
     return "✓ synced — %d SKU(s) updated, %d unknown" % (len(res["updated"]), len(res["unknown"]))
 
 
+# ── MEMBERSHIP page (tier by monthly revenue) ────────────────────────────────
+def render_membership(args):
+    from .store import Store, DEFAULT_DB
+    from . import membership as m
+    db = getattr(args, "db", None) or DEFAULT_DB
+    s = m.status(Store(db))
+    t, nxt = s["tier"], s["next"]
+    money = lambda v: "{:,.0f}".format(v or 0)
+
+    inner = ["<h2>👑 EBE Membership</h2>"]
+    inner.append(
+        "<div class=card style='text-align:center'>"
+        "<div style='font-size:48px;line-height:1'>%s</div>"
+        "<div class=big style='margin-top:6px'>%s MEMBER</div>"
+        "<div class=sub>$%s revenue · last %d days</div></div>"
+        % (t["icon"], _esc(t["name"].upper()), money(s["revenue"]), s["days"]))
+
+    if nxt:
+        pct = int(round(s["progress"] * 100))
+        inner.append(
+            "<div class=card><div class=sub>%d%% to %s %s — <b>$%s</b> to go</div>"
+            "<div style='height:15px;border-radius:9px;background:#04141b;border:1px solid #1f4a57;"
+            "overflow:hidden;margin-top:9px'>"
+            "<div style='height:100%%;width:%d%%;background:linear-gradient(90deg,#39e6ff,#7dffce);"
+            "box-shadow:0 0 14px rgba(57,230,255,.6)'></div></div></div>"
+            % (pct, nxt["icon"], _esc(nxt["name"]), money(s["to_next"]), pct))
+    else:
+        inner.append("<div class='card go' style='text-align:center'>👑 You're at the top — Elite Diamond status.</div>")
+
+    inner.append("<table><tr><th>tier<th class=r>monthly revenue<th>unlocks</tr>")
+    for ti in m.TIERS[1:]:
+        on = ti["key"] == t["key"]
+        rs = " style='background:rgba(57,230,255,.10)'" if on else ""
+        inner.append("<tr%s><td><b>%s %s</b>%s<td class=r>$%s+<td class=sub>%s</tr>"
+                     % (rs, ti["icon"], _esc(ti["name"]), " ←" if on else "",
+                        money(ti["min"]), _esc(ti["perks"])))
+    inner.append("</table>")
+    inner.append("<div class=sub>Tier = your trailing 30-day sales revenue. Keep selling to level up — "
+                 "and to keep your status. 💪</div>")
+    return _shell(_ctx_from_args(args), "membership", "".join(inner))
+
+
 # ── P&L page (realized profit from recorded sales) ───────────────────────────
 def render_pnl(args):
     from . import pnl as pnlmod
@@ -1258,6 +1300,8 @@ def serve(args):
                     body = render_report(a)
                 elif path == "/pnl":
                     body = render_pnl(a)
+                elif path == "/membership":
+                    body = render_membership(a)
                 elif path == "/act":
                     body = render_act(a)
                 elif path == "/catalog":
