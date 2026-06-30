@@ -96,7 +96,8 @@ def _locked_page(tn, tid):
 
 
 def serve(args):
-    port = getattr(args, "port", None) or 8080
+    # --port wins; else Render/Heroku-style $PORT; else default
+    port = getattr(args, "port", None) or int(os.environ.get("PORT") or 8080)
 
     class H(BaseHTTPRequestHandler):
         @property

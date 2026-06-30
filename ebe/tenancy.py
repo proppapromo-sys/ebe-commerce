@@ -19,8 +19,9 @@ import os
 import sqlite3
 import time
 
-CONTROL_DB = os.environ.get("EBE_CONTROL_DB", "ebe_tenants.db")
-TENANT_DIR = os.environ.get("EBE_TENANT_DIR", "tenants")
+_DATA = os.environ.get("EBE_DATA_DIR", "")     # persistent disk dir (Render etc.); "" = cwd
+CONTROL_DB = os.environ.get("EBE_CONTROL_DB") or os.path.join(_DATA, "ebe_tenants.db")
+TENANT_DIR = os.environ.get("EBE_TENANT_DIR") or os.path.join(_DATA, "tenants")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tenants (

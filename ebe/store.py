@@ -23,7 +23,7 @@ import os
 import sqlite3
 import time
 
-DEFAULT_DB = os.environ.get("EBE_DB", "ebe.db")
+DEFAULT_DB = os.environ.get("EBE_DB") or os.path.join(os.environ.get("EBE_DATA_DIR", ""), "ebe.db")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
