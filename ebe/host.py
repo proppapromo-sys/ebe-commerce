@@ -27,6 +27,7 @@ OWNER_PW = os.environ.get("EBE_OWNER_PASSWORD")
 CHECKOUT_URL = os.environ.get("EBE_CHECKOUT_URL", "")     # your Stripe Payment Link
 TRIAL_DAYS = int(os.environ.get("EBE_TRIAL_DAYS", "0"))   # >0 = free trial before payment
 BASE_URL = os.environ.get("EBE_BASE_URL", "").rstrip("/")  # e.g. https://os.ebehq.com — for invite links
+PORTAL_URL = os.environ.get("EBE_BILLING_PORTAL_URL", "")  # Stripe Customer Portal link (update card / cancel)
 
 
 def _sign(value):
@@ -91,6 +92,35 @@ def _upgrade_page(a, nav_key):
     return dashboard._shell(dashboard._ctx_from_args(a), nav_key, msg)
 
 
+def _billing_card(tn, tid, t):
+    """The 'add / manage payment information' card. Stripe-hosted — we never touch card data.
+    New customers go to Checkout (subscribe); existing ones to the Customer Portal."""
+    esc = dashboard._esc
+    has_customer = bool(t.get("stripe_customer"))
+    cls = "card" if tn.is_entitled(tid) else "card warn"
+    btns = []
+    if has_customer and PORTAL_URL:
+        btns.append("<a class='btn go' href='%s'>Manage billing → update card</a>" % esc(PORTAL_URL))
+    if not has_customer and CHECKOUT_URL:
+        sep = "&" if "?" in CHECKOUT_URL else "?"
+        url = "%s%sclient_reference_id=%s" % (CHECKOUT_URL, sep, urllib.parse.quote(tid))
+        btns.append("<a class='btn go' href='%s'>Add payment method → subscribe</a>" % esc(url))
+    if not btns:                                   # nothing actionable → tell the operator what to set
+        if not (CHECKOUT_URL or PORTAL_URL):
+            note = "Billing isn't connected yet. Set EBE_CHECKOUT_URL and EBE_BILLING_PORTAL_URL."
+        elif has_customer:
+            note = "Set EBE_BILLING_PORTAL_URL to let clients update their card."
+        else:
+            note = "Set EBE_CHECKOUT_URL to let clients add a payment method."
+        btns.append("<span class=sub>%s</span>" % esc(note))
+    return ("<div class='%s'><b>💳 Billing</b>"
+            "<div class=sub style='margin-top:4px'>subscription: <b>%s</b></div>"
+            "<div style='margin-top:10px'>%s</div>"
+            "<div class=sub style='margin-top:8px'>Secured by Stripe — cards, bank (ACH) and "
+            "Apple/Google Pay. We never see your card number.</div></div>"
+            % (cls, esc(tn.status_line(tid)), " ".join(btns)))
+
+
 def render_tenant_settings(tn, tid, a, msg=""):
     """Full settings for a hosted tenant: business, plan + seats, and team management."""
     from . import plans, dashboard
@@ -108,6 +138,9 @@ def render_tenant_settings(tn, tid, a, msg=""):
     inner.append("<div class=card><b>Plan</b> · <span class=big>%s</span> &nbsp;$%d/mo"
                  "<div class=sub>seats %d / %d used · %d features unlocked</div></div>"
                  % (esc(pl["name"]), pl["monthly"], used, cap, len(feats)))
+
+    if getattr(a, "role", "owner") == "owner":         # billing is the account owner's alone
+        inner.append(_billing_card(tn, tid, t))
 
     manage = getattr(a, "role", "owner") in ("owner", "admin")
     inner.append("<h2>👥 Team</h2>")

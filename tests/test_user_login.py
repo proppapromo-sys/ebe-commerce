@@ -88,5 +88,71 @@ class HostPermissionTests(unittest.TestCase):
             host.BASE_URL = old
 
 
+class BillingCardTests(unittest.TestCase):
+    def setUp(self):
+        fd, self.ctrl = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.dir = tempfile.mkdtemp()
+        self.tn = Tenants(path=self.ctrl, tenant_dir=self.dir)
+        self.tn.create_tenant("acme", "Acme Co", "pw", days=30, plan="growth")
+
+    def tearDown(self):
+        self.tn.close()
+        os.remove(self.ctrl)
+
+    def test_new_customer_sees_add_payment(self):
+        from ebe import host
+        old_c, old_p = host.CHECKOUT_URL, host.PORTAL_URL
+        try:
+            host.CHECKOUT_URL = "https://buy.stripe.com/test"
+            host.PORTAL_URL = "https://billing.stripe.com/p/test"
+            t = self.tn.tenant("acme")
+            html = host._billing_card(self.tn, "acme", t)
+            self.assertIn("Add payment method", html)
+            self.assertIn("client_reference_id=acme", html)
+            self.assertNotIn("Manage billing", html)   # no stripe customer yet
+            self.assertIn("Secured by Stripe", html)
+        finally:
+            host.CHECKOUT_URL, host.PORTAL_URL = old_c, old_p
+
+    def test_existing_customer_sees_manage_billing(self):
+        from ebe import host
+        old_c, old_p = host.CHECKOUT_URL, host.PORTAL_URL
+        try:
+            host.CHECKOUT_URL = "https://buy.stripe.com/test"
+            host.PORTAL_URL = "https://billing.stripe.com/p/test"
+            self.tn.link_stripe("acme", "cus_123")
+            t = self.tn.tenant("acme")
+            html = host._billing_card(self.tn, "acme", t)
+            self.assertIn("Manage billing", html)
+            self.assertNotIn("Add payment method", html)
+        finally:
+            host.CHECKOUT_URL, host.PORTAL_URL = old_c, old_p
+
+    def test_unconfigured_shows_operator_hint(self):
+        from ebe import host
+        old_c, old_p = host.CHECKOUT_URL, host.PORTAL_URL
+        try:
+            host.CHECKOUT_URL = ""
+            host.PORTAL_URL = ""
+            t = self.tn.tenant("acme")
+            html = host._billing_card(self.tn, "acme", t)
+            self.assertIn("EBE_CHECKOUT_URL", html)
+        finally:
+            host.CHECKOUT_URL, host.PORTAL_URL = old_c, old_p
+
+    def test_settings_shows_billing_to_owner_only(self):
+        from ebe import host
+        import types
+        a_owner = types.SimpleNamespace(role="owner", profile="generic",
+                                        fees="amazon-fba", capital=None, plan="growth")
+        a_member = types.SimpleNamespace(role="member", profile="generic",
+                                         fees="amazon-fba", capital=None, plan="growth")
+        owner_html = host.render_tenant_settings(self.tn, "acme", a_owner)
+        member_html = host.render_tenant_settings(self.tn, "acme", a_member)
+        self.assertIn("💳 Billing", owner_html)
+        self.assertNotIn("💳 Billing", member_html)
+
+
 if __name__ == "__main__":
     unittest.main()

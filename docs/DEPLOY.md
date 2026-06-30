@@ -53,15 +53,25 @@ automatically. Renewals auto-extend; failed payments auto-suspend. No manual `te
    `https://ebe.ebehq.com/webhook/stripe`, subscribe to:
    `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
    `customer.subscription.deleted`. Copy the signing secret (`whsec_…`).
-3. **Set these env vars** (in the systemd unit, or your PowerShell session):
+3. **In Stripe → Settings → Billing → Customer portal:** turn on the portal and copy its
+   link. This is where existing clients update their card, switch plans, or cancel — it
+   shows up inside EBE as **Settings → 💳 Billing → Manage billing**.
+4. **Set these env vars** (in Render, the systemd unit, or your shell):
    ```
    EBE_CHECKOUT_URL=https://buy.stripe.com/your_payment_link
+   EBE_BILLING_PORTAL_URL=https://billing.stripe.com/p/login/your_portal_link
    EBE_STRIPE_WEBHOOK_SECRET=whsec_xxx
-   EBE_TRIAL_DAYS=0          # or e.g. 14 for a free trial before payment
+   EBE_BASE_URL=https://os.ebehq.com   # makes team invite links full URLs
+   EBE_TRIAL_DAYS=0                     # or e.g. 14 for a free trial before payment
    ```
-4. Done. Flow: venue → `/signup` → Stripe checkout → pays → webhook activates them →
+5. Done. Flow: venue → `/signup` → Stripe checkout → pays → webhook activates them →
    monthly invoice auto-renews → missed payment auto-suspends (locked server-side).
 
+> The **Billing** card (Settings, owner-only) shows new clients an **Add payment method →
+> subscribe** button and existing clients a **Manage billing → update card** button.
+> Stripe hosts both pages, so EBE never touches a card number — cards, bank/ACH, and
+> Apple/Google Pay all work out of the box.
+>
 > The Payment Link carries `client_reference_id` = the tenant's login ID, so the webhook
 > knows exactly who paid. Test it with Stripe's test mode + the webhook "Send test event".
 
