@@ -251,6 +251,7 @@ def serve(args):
                 "/rebuy": lambda: dashboard.render_rebuy(a),
                 "/reprice": lambda: dashboard.render_reprice(a),
                 "/source": lambda: dashboard.render_source(a, (qs.get("cand") or [""])[0]),
+                "/discover": lambda: dashboard.render_discover(a, qs),
                 "/sheet": lambda: dashboard.render_sheet(a),
                 "/live": lambda: dashboard.render_live(a, (qs.get("asins") or [""])[0]),
                 "/supply": lambda: dashboard.render_supply(a, (qs.get("listings") or [""])[0]),

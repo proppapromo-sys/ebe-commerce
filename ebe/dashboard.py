@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # Generalized e-commerce nav (any seller, not a venue). Venue/Supply routes still exist
 # but are off the default nav — they were niche + carried personal sample data.
 NAV = [("/", "Today", "today"), ("/catalog", "Catalog", "catalog"), ("/rebuy", "Restock", "rebuy"),
-       ("/reprice", "Pricing", "reprice"), ("/pnl", "Profit", "pnl"), ("/source", "Sourcing", "source"),
+       ("/reprice", "Pricing", "reprice"), ("/pnl", "Profit", "pnl"), ("/discover", "Discover", "discover"),
        ("/live", "Market", "live"), ("/act", "Actions", "act"), ("/brief", "Brief", "brief"),
        ("/report", "Orb Report", "report"), ("/membership", "Member", "membership")]
 
@@ -1158,6 +1158,95 @@ def _parse_candidates(text):
     return rows
 
 
+DISCOVER_CATEGORIES = ("home", "kitchen", "health", "beauty", "sports", "toys",
+                       "pet", "office", "garden", "baby", "electronics", "apparel")
+
+
+def render_discover(args, qs):
+    """Search the live market for products to sell, ranked by profit after fees."""
+    from .adapters import config
+    from .fees import PRESETS, AMAZON_FBA
+    fee = PRESETS.get(getattr(args, "fees", "") or "", AMAZON_FBA)
+    prof = getattr(args, "profile", "generic") or "generic"
+
+    def g(name, default):
+        return (qs.get(name) or [default])[0]
+    category = g("category", "")
+    try:
+        min_sales = int(g("min_sales", "500") or 500)
+    except ValueError:
+        min_sales = 500
+    try:
+        min_price = float(g("min_price", "12") or 12)
+        max_price = float(g("max_price", "45") or 45)
+    except ValueError:
+        min_price, max_price = 12.0, 45.0
+    max_sellers = g("max_sellers", "")
+    max_sellers = int(max_sellers) if max_sellers.strip().isdigit() else None
+
+    opts = "".join("<option%s>%s</option>" % (" selected" if c == category else "", c)
+                   for c in DISCOVER_CATEGORIES)
+    p = urllib.parse.quote(prof)
+    inner = ["<h2>🔎 Discover products to sell</h2>"]
+    inner.append("""
+<div class=card>
+<form action='/discover' method=get class=addform>
+  <input type=hidden name=profile value='%s'>
+  <select name=category><option value=''>any category</option>%s</select>
+  <input name=min_sales type=number placeholder='min sales/mo' value='%d'>
+  <input name=min_price type=number step='0.01' placeholder='min $' value='%g'>
+  <input name=max_price type=number step='0.01' placeholder='max $' value='%g'>
+  <input name=max_sellers type=number placeholder='max sellers' value='%s'>
+  <button class='btn go' type=submit>🔎 Search</button>
+</form>
+<div class=sub>Searches the live market and ranks what's worth selling — margin after fees, edge, and profit.</div>
+</div>
+<style>.addform select{font:600 13px var(--hud);color:#eaffff;background:#04141b;border:1px solid #1f4a57;border-radius:8px;padding:9px 11px}</style>
+""" % (p, opts, min_sales, min_price, max_price, "" if max_sellers is None else max_sellers))
+
+    if config.require(["KEEPA_API_KEY"]):
+        inner.append("<div class='card warn'>Connect market data to search — add your Keepa key in Connections.</div>")
+        return _shell(_ctx_from_args(args), "discover", "".join(inner))
+
+    if not qs.get("category") and not qs.get("min_sales"):
+        inner.append("<div class=card>Pick a category and hit <b>Search</b> to find products with real demand and margin.</div>")
+        return _shell(_ctx_from_args(args), "discover", "".join(inner))
+
+    try:
+        from .adapters.keepa import discover_candidates
+        from .sourcing_rank import rank_candidates
+        from .profile import PROFILES
+        prods = discover_candidates(category=category or None, min_monthly=min_sales,
+                                    min_price=min_price, max_price=max_price,
+                                    max_sellers=max_sellers, limit=30)
+        prof_obj = PROFILES.get(prof) or PROFILES["generic"]
+        items = [pr.as_item() for pr in prods]
+        ranked = rank_candidates(items, prof_obj, fee)
+    except Exception as ex:
+        inner.append("<div class='card warn'>Search failed: %s</div>" % _esc(str(ex)))
+        return _shell(_ctx_from_args(args), "discover", "".join(inner))
+
+    if not ranked:
+        inner.append("<div class=card>No products matched — loosen the filters (lower min sales, widen the price band, raise max sellers).</div>")
+        return _shell(_ctx_from_args(args), "discover", "".join(inner))
+
+    inner.append("<h2>📈 %d results <span class=sub>(ranked by profit potential)</span></h2>" % len(ranked))
+    inner.append("<table><tr><th>product<th class=r>cost<th class=r>sell<th class=r>margin"
+                 "<th class=r>edge<th>verdict<th class=r>$/mo<th></tr>")
+    for r in ranked:
+        vcls = "ok" if r["verdict"] in ("CORNER", "STRONG") else ("warn" if r["verdict"] == "TEST" else "alert")
+        sku = (r["item"].get("id") or r["name"])[:32]
+        add = ("/catalog-add?profile=%s&sku=%s&name=%s&cost=%s&sell=%s"
+               % (p, urllib.parse.quote(sku), urllib.parse.quote(r["name"][:60]),
+                  r["cost"], r["sell"]))
+        inner.append("<tr><td>%s<td class=r>$%.2f<td class=r>$%.2f<td class=r>%.0f%%<td class=r>%.0f%%"
+                     "<td class=%s>%s<td class=r>$%.0f<td><a class='btn sm' href='%s'>+ Add</a></tr>"
+                     % (_esc(r["name"][:30]), r["cost"], r["sell"], r["margin"] * 100,
+                        r["composite"] * 100, vcls, r["verdict"], r["monthly_profit"], _esc(add)))
+    inner.append("</table>")
+    return _shell(_ctx_from_args(args), "discover", "".join(inner))
+
+
 def render_source(args, text):
     from .sourcing_rank import rank_candidates, summarize, fund_within_budget
     from .profile import PROFILES
@@ -1368,6 +1457,8 @@ def serve(args):
                     body = render_reprice(a)
                 elif path == "/source":
                     body = render_source(a, (qs.get("cand") or [""])[0])
+                elif path == "/discover":
+                    body = render_discover(a, qs)
                 elif path == "/sheet":
                     body = render_sheet(a)
                 elif path == "/live":
