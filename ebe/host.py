@@ -278,6 +278,22 @@ def serve(args):
             pass
 
     print("EBE HOST (multi-tenant) → http://0.0.0.0:%d   (/login · /admin · /health)" % port)
+
+    # In-process autopilot: run the loop for every entitled tenant on a timer (cloud-safe —
+    # shares the web service's disk). Enable with EBE_AUTOPILOT_MINUTES (0/unset = off).
+    mins = int(os.environ.get("EBE_AUTOPILOT_MINUTES") or 0)
+    if mins > 0:
+        from . import scheduler, autopilot
+        from .store import Store
+        sched_tn = tenancy.Tenants()            # dedicated connection for the scheduler thread
+        scheduler.start(
+            mins,
+            tenants=lambda: [t for t in sched_tn.list_tenants() if sched_tn.is_entitled(t["id"])],
+            store_factory=lambda t: Store(t["db_path"]),
+            cycle_fn=lambda s: autopilot.cycle(s),
+        )
+        print("[autopilot] in-process scheduler ON · every %dm" % mins)
+
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     srv.daemon_threads = True
     try:

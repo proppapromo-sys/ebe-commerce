@@ -21,6 +21,8 @@ services:
         sync: false
       - key: EBE_BRAND
         value: EBE OS             # flip to "EBE Command" in 2 weeks
+      - key: EBE_AUTOPILOT_MINUTES
+        value: "60"               # in-process autopilot every hour (0 = off)
     disk:
       name: ebe-data
       mountPath: /data
