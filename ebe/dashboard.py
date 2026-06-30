@@ -67,16 +67,27 @@ body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
   -webkit-backdrop-filter:blur(13px);backdrop-filter:blur(13px);border-bottom:1px solid var(--brd);}
 .brand{display:flex;align-items:center;gap:13px;font:700 18px/1 var(--hud);letter-spacing:.16em;
   color:#eaf8ff;text-shadow:0 0 20px rgba(57,230,255,.4)}
-.brand .core{position:relative;width:16px;height:16px;border-radius:50%;
-  background:radial-gradient(circle at 32% 30%,#cffbff,#39e6ff 46%,#0c7d9e);
-  box-shadow:0 0 12px var(--cyan),0 0 30px rgba(57,230,255,.7);animation:pulse 2.4s ease-in-out infinite}
-.brand .core::after{content:'';position:absolute;inset:-6px;border-radius:50%;
-  border:1.5px solid rgba(57,230,255,.5);border-top-color:transparent;border-bottom-color:transparent;
-  animation:orbit 3s linear infinite}
-.brand .core::before{content:'';position:absolute;inset:-11px;border-radius:50%;
-  border:1px solid rgba(57,230,255,.18);animation:orbit 6s linear infinite reverse}
+.orb{position:relative;display:inline-block;width:19px;height:19px;flex:0 0 auto}
+.orb i{position:absolute;border-radius:50%;inset:0;pointer-events:none}
+.orb .orb-core{inset:3px;background:radial-gradient(circle at 32% 28%,#f2ffff,#7df0ff 38%,#39e6ff 62%,#0a6e8f);
+  box-shadow:0 0 9px var(--cyan),0 0 20px rgba(57,230,255,.8),inset 0 0 5px rgba(255,255,255,.6);
+  animation:pulse 2.4s ease-in-out infinite}
+.orb .orb-aura{inset:-9px;background:radial-gradient(circle,rgba(57,230,255,.5),rgba(57,230,255,.12) 45%,transparent 70%);
+  filter:blur(2.5px);animation:breathe 3.4s ease-in-out infinite}
+.orb .orb-ring{inset:-4px;border:1.5px solid rgba(125,240,255,.65);
+  border-top-color:transparent;border-bottom-color:transparent;
+  box-shadow:0 0 8px -1px rgba(57,230,255,.5);animation:orbit 2.6s linear infinite}
+.orb .orb-ring2{inset:-9px;border:1px solid rgba(57,230,255,.28);
+  border-left-color:transparent;border-right-color:transparent;animation:orbit 5.4s linear infinite reverse}
+.orb .orb-sat{inset:-4px;animation:orbit 2.6s linear infinite}
+.orb .orb-sat::before{content:'';position:absolute;top:-2px;left:50%;width:3.5px;height:3.5px;margin-left:-1.75px;
+  border-radius:50%;background:#f2ffff;box-shadow:0 0 7px 1.5px var(--cyan),0 0 12px rgba(57,230,255,.7)}
+.brand:hover .orb-ring{animation-duration:1.1s}
+.brand:hover .orb-sat{animation-duration:1.1s}
+.brand:hover .orb-core{box-shadow:0 0 14px var(--cyan),0 0 34px rgba(57,230,255,1),inset 0 0 6px rgba(255,255,255,.8)}
 .brand .orbname{color:var(--cyan);opacity:.85;font-size:12px;letter-spacing:.22em;margin-left:2px}
-@keyframes pulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.18);opacity:1}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.94}50%{transform:scale(1.14);opacity:1}}
+@keyframes breathe{0%,100%{transform:scale(.88);opacity:.5}50%{transform:scale(1.18);opacity:.95}}
 @keyframes orbit{to{transform:rotate(360deg)}}
 .status{display:flex;align-items:center;gap:9px;font:600 11px/1 var(--hud);letter-spacing:.12em;
   text-transform:uppercase;color:var(--mut)}
@@ -229,7 +240,9 @@ def _shell(ctx, current, inner, refresh=False):
         head.append("<meta http-equiv=refresh content=45>")
     head.append("<style>%s</style></head><body><div class=sweep></div>" % _CSS)
     head.append(
-        "<header class=topbar><div class=brand><span class=core></span>" + bname +
+        "<header class=topbar><div class=brand>"
+        "<span class=orb><i class=orb-aura></i><i class=orb-ring2></i><i class=orb-ring></i>"
+        "<i class=orb-sat></i><i class=orb-core></i></span>" + bname +
         "<span class=orbname>EBE&nbsp;ORB</span></div>"
         +
         "<div class=status><span class=dot></span>EBE ORB ONLINE<span class=sep>·</span>"
