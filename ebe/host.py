@@ -26,6 +26,7 @@ SECRET = (os.environ.get("EBE_HOST_SECRET") or "ebe-dev-secret-change-me").encod
 OWNER_PW = os.environ.get("EBE_OWNER_PASSWORD")
 CHECKOUT_URL = os.environ.get("EBE_CHECKOUT_URL", "")     # your Stripe Payment Link
 TRIAL_DAYS = int(os.environ.get("EBE_TRIAL_DAYS", "0"))   # >0 = free trial before payment
+BASE_URL = os.environ.get("EBE_BASE_URL", "").rstrip("/")  # e.g. https://os.ebehq.com — for invite links
 
 
 def _sign(value):
@@ -45,12 +46,32 @@ def _cookie(header, key):
     return c[key].value if key in c else None
 
 
-def _tenant_args(tenant, qs):
+def _tenant_args(tenant, qs, user=None, role="owner"):
     return types.SimpleNamespace(
         id=tenant["id"], name=tenant["name"], plan=tenant["plan"],
+        user=user, role=role,
         fees="amazon-fba", products=None, costs=None, journal=None, capital=None,
         port=None, strategy=None, db=tenant["db_path"],
         profile=(qs.get("profile") or ["generic"])[0])
+
+
+# write actions a viewer may not perform; team management needs owner/admin
+_WRITE_PATHS = ("/po", "/price", "/do",
+                "/catalog-add", "/catalog-publish", "/catalog-sync", "/catalog-describe")
+_TEAM_PATHS = ("/settings-invite", "/settings-remove")
+
+
+def _may_write(role, path):
+    if path in _TEAM_PATHS:
+        return role in ("owner", "admin")
+    if path in _WRITE_PATHS:
+        return role != "viewer"
+    return True
+
+
+def _invite_link(tid, token):
+    q = "/accept?tid=%s&token=%s" % (urllib.parse.quote(tid), token)
+    return (BASE_URL + q) if BASE_URL else q
 
 
 # nav path → key, for plan-gating a hosted tenant's routes
@@ -88,23 +109,28 @@ def render_tenant_settings(tn, tid, a, msg=""):
                  "<div class=sub>seats %d / %d used · %d features unlocked</div></div>"
                  % (esc(pl["name"]), pl["monthly"], used, cap, len(feats)))
 
+    manage = getattr(a, "role", "owner") in ("owner", "admin")
     inner.append("<h2>👥 Team</h2>")
     inner.append("<table><tr><th>email<th>role<th>status<th></tr>")
     inner.append("<tr><td>%s<td>owner<td><span class=ok>active</span><td></tr>" % esc(t["name"]))
     for u in tn.list_users(tid):
-        inner.append("<tr><td>%s<td>%s<td>%s<td>"
-                     "<a class='btn ghost sm' href='/settings-remove?uid=%d'>remove</a></tr>"
-                     % (esc(u["email"]), esc(u["role"]), esc(u["status"]), u["id"]))
+        link = ""
+        if manage and u["status"] == "invited" and u.get("invite_token"):
+            link = ("<div class=sub style='word-break:break-all'>invite: %s</div>"
+                    % esc(_invite_link(tid, u["invite_token"])))
+        rm = ("<a class='btn ghost sm' href='/settings-remove?uid=%d'>remove</a>" % u["id"]) if manage else ""
+        inner.append("<tr><td>%s%s<td>%s<td>%s<td>%s</tr>"
+                     % (esc(u["email"]), link, esc(u["role"]), esc(u["status"]), rm))
     inner.append("</table>")
 
-    if tn.can_add_user(tid):
+    if manage and tn.can_add_user(tid):
         inner.append(
             "<div class=card><form action='/settings-invite' method=get class=addform>"
             "<input name=email type=email placeholder='teammate@email.com' required>"
             "<select name=role><option>member</option><option>admin</option><option>viewer</option></select>"
             "<button class='btn go' type=submit>Invite</button></form>"
             "<div class=sub>%d of %d seats used.</div></div>" % (used, cap))
-    else:
+    elif manage:
         nxt = plans.next_seat_upgrade(t["plan"])
         up = plans.plan(nxt)["name"] if nxt else "a higher plan"
         inner.append("<div class='card warn'>All %d seats used — upgrade to <b>%s</b> to add more team users.</div>"
@@ -133,13 +159,31 @@ def _signup_page(msg=""):
 
 
 def _login_page(msg=""):
+    from . import brand as brandmod
     note = "<div class='card warn'>%s</div>" % dashboard._esc(msg) if msg else ""
+    brand = dashboard._esc(brandmod.upper())
     return _page("EBE · Sign in",
-                 "<h2>EBE&nbsp;COMMAND · sign in</h2>%s"
+                 "<h2>%s · sign in</h2>%s"
                  "<form class=card method=post action='/login'>"
-                 "<label>Venue ID</label><input name=id placeholder='cloud9' autofocus><br><br>"
+                 "<label>Account ID</label><input name=id placeholder='cloud9' autofocus><br><br>"
+                 "<label>Email <span class=sub>(team members only — owners leave blank)</span></label>"
+                 "<input name=email type=email placeholder='you@email.com'><br><br>"
                  "<label>Password</label><input name=pw type=password><br><br>"
-                 "<button>Sign in</button></form>" % note)
+                 "<button>Sign in</button></form>" % (brand, note))
+
+
+def _accept_page(tid, token, msg=""):
+    note = "<div class='card warn'>%s</div>" % dashboard._esc(msg) if msg else ""
+    esc = dashboard._esc
+    return _page("EBE · Accept invite",
+                 "<h2>Set your password</h2>%s"
+                 "<form class=card method=post action='/accept'>"
+                 "<input type=hidden name=tid value='%s'>"
+                 "<input type=hidden name=token value='%s'>"
+                 "<div class=sub>account: <b>%s</b></div><br>"
+                 "<label>Choose a password</label><input name=pw type=password autofocus><br><br>"
+                 "<button>Activate &amp; sign in</button></form>"
+                 % (note, esc(tid), esc(token), esc(tid)))
 
 
 def _locked_page(tn, tid):
@@ -183,8 +227,16 @@ def serve(args):
                 h.append(("Set-Cookie", cookie))
             self._send(b"", 303, h)
 
+        def _session(self):
+            """(tid, email) from the signed cookie. email is None for the owner login."""
+            raw = _unsign(_cookie(self.headers.get("Cookie"), "ebe_sess"))
+            if not raw:
+                return None, None
+            tid, _, email = raw.partition("|")
+            return tid, (email or None)
+
         def _session_tenant(self):
-            return _unsign(_cookie(self.headers.get("Cookie"), "ebe_sess"))
+            return self._session()[0]
 
         def _is_owner(self):
             return _unsign(_cookie(self.headers.get("Cookie"), "ebe_owner")) == "OWNER"
@@ -225,10 +277,32 @@ def serve(args):
                 self._redirect("/login"); return
             if path == "/login":
                 tid = g("id").strip().lower()
-                if self.tn.authenticate(tid, g("pw")):
+                email = g("email").strip().lower()
+                if email:                                  # team member sign-in
+                    u = self.tn.authenticate_user(tid, email, g("pw"))
+                    if u:
+                        val = _sign("%s|%s" % (tid, email))
+                        self._redirect("/", "ebe_sess=%s; HttpOnly; Path=/; Max-Age=86400" % val)
+                    else:
+                        self._send(_login_page("Wrong account, email, or password."))
+                    return
+                if self.tn.authenticate(tid, g("pw")):     # venue owner sign-in
                     self._redirect("/", "ebe_sess=%s; HttpOnly; Path=/; Max-Age=86400" % _sign(tid))
                 else:
                     self._send(_login_page("Wrong venue ID or password."))
+                return
+            if path == "/accept":                          # redeem an invite → set password
+                tid = g("tid").strip().lower()
+                token, pw = g("token"), g("pw")
+                if not pw or len(pw) < 6:
+                    self._send(_accept_page(tid, token, "Choose a password of at least 6 characters."))
+                    return
+                u = self.tn.accept_invite(tid, token, pw)
+                if not u:
+                    self._send(_accept_page(tid, token, "This invite link is invalid or already used."))
+                    return
+                val = _sign("%s|%s" % (tid, u["email"]))
+                self._redirect("/", "ebe_sess=%s; HttpOnly; Path=/; Max-Age=86400" % val)
                 return
             if path == "/admin/login":
                 if OWNER_PW and hmac.compare_digest(g("pw"), OWNER_PW):
@@ -260,18 +334,25 @@ def serve(args):
                 self._send(_login_page()); return
             if path == "/signup":
                 self._send(_signup_page()); return
+            if path == "/accept":
+                tid = (qs.get("tid") or [""])[0].strip().lower()
+                token = (qs.get("token") or [""])[0]
+                self._send(_accept_page(tid, token)); return
             if path == "/logout":
                 self._redirect("/login", "ebe_sess=; Path=/; Max-Age=0"); return
             if path == "/admin" or path == "/admin/login":
                 self._admin(); return
 
-            tid = self._session_tenant()
+            tid, email = self._session()
             if not tid or not self.tn.tenant(tid):
                 self._redirect("/login"); return
+            if email and not self.tn.get_user(tid, email):       # team user removed → sign out
+                self._redirect("/login", "ebe_sess=; Path=/; Max-Age=0"); return
             if not self.tn.is_entitled(tid):                     # 🔒 server-side subscription gate
                 self._send(_locked_page(self.tn, tid), 402); return
 
-            a = _tenant_args(self.tn.tenant(tid), qs)
+            role = (self.tn.user_role(tid, email) or "member") if email else "owner"
+            a = _tenant_args(self.tn.tenant(tid), qs, user=email, role=role)
             try:
                 body = self._tenant_page(path, a, qs)
             except Exception as ex:
@@ -281,6 +362,11 @@ def serve(args):
             self._send(body)
 
         def _tenant_page(self, path, a, qs):
+            # role guard: viewers can't write; only owner/admin manage the team
+            if not _may_write(a.role, path):
+                self._redirect("/settings?msg=%s"
+                               % urllib.parse.quote("You don't have permission for that."))
+                return None
             # write actions: apply to the tenant's own DB, then redirect back
             if path == "/po":
                 dashboard._do_po(a, qs); self._redirect("/rebuy?profile=%s" % a.profile); return None
@@ -297,8 +383,9 @@ def serve(args):
                     msg = "Enter an email to invite."
                 else:
                     try:
-                        self.tn.add_user(a.id, email, role)
-                        msg = "Invited %s as %s." % (email, role)
+                        token = self.tn.add_user(a.id, email, role)
+                        msg = "Invited %s as %s. Share this link: %s" % (
+                            email, role, _invite_link(a.id, token))
                     except SeatLimitError:
                         msg = "Seat limit reached — upgrade your plan to add more users."
                 self._redirect("/settings?msg=%s" % urllib.parse.quote(msg)); return None

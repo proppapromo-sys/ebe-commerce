@@ -37,14 +37,15 @@ CREATE TABLE IF NOT EXISTS tenants (
     created  REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tenant_users (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant  TEXT NOT NULL,
-    email   TEXT NOT NULL,
-    role    TEXT NOT NULL DEFAULT 'member',     -- owner | admin | member | viewer
-    status  TEXT NOT NULL DEFAULT 'invited',    -- invited | active
-    salt    TEXT,
-    pw_hash TEXT,
-    created REAL NOT NULL DEFAULT 0,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant       TEXT NOT NULL,
+    email        TEXT NOT NULL,
+    role         TEXT NOT NULL DEFAULT 'member',     -- owner | admin | member | viewer
+    status       TEXT NOT NULL DEFAULT 'invited',    -- invited | active
+    salt         TEXT,
+    pw_hash      TEXT,
+    invite_token TEXT,
+    created      REAL NOT NULL DEFAULT 0,
     UNIQUE(tenant, email)
 );
 """
@@ -75,6 +76,9 @@ class Tenants:
         have = {r["name"] for r in self._cx.execute("PRAGMA table_info(tenants)")}
         if "stripe_customer" not in have:                # migrate older control DBs
             self._cx.execute("ALTER TABLE tenants ADD COLUMN stripe_customer TEXT")
+        ucols = {r["name"] for r in self._cx.execute("PRAGMA table_info(tenant_users)")}
+        if ucols and "invite_token" not in ucols:        # migrate older team tables
+            self._cx.execute("ALTER TABLE tenant_users ADD COLUMN invite_token TEXT")
         self._cx.commit()
 
     def close(self):
@@ -131,9 +135,15 @@ class Tenants:
 
     def list_users(self, tid):
         cur = self._cx.execute(
-            "SELECT id,email,role,status,created FROM tenant_users WHERE tenant=? ORDER BY id",
-            (tid.lower(),))
+            "SELECT id,email,role,status,invite_token,created FROM tenant_users "
+            "WHERE tenant=? ORDER BY id", (tid.lower(),))
         return [dict(r) for r in cur.fetchall()]
+
+    def get_user(self, tid, email):
+        row = self._cx.execute(
+            "SELECT * FROM tenant_users WHERE tenant=? AND email=?",
+            (tid.lower(), email.strip().lower())).fetchone()
+        return dict(row) if row else None
 
     def seats_used(self, tid):
         """Owner counts as 1, plus every invited/active team user."""
@@ -145,17 +155,54 @@ class Tenants:
         return self.seats_used(tid) < self.seat_cap(tid)
 
     def add_user(self, tid, email, role="member"):
-        """Invite a team user. Raises SeatLimitError if the plan's seats are full."""
+        """Invite a team user. Returns a one-time invite token to share (the user sets
+        their own password via accept_invite). Raises SeatLimitError at the seat cap.
+        Re-inviting an existing teammate reissues their token without taking a new seat."""
         tid = tid.lower()
+        email = email.strip().lower()
         role = role if role in ROLES else "member"
-        if not self.can_add_user(tid):
+        if not self.get_user(tid, email) and not self.can_add_user(tid):
             raise SeatLimitError("seat limit reached for plan")
+        token = os.urandom(16).hex()
         self._cx.execute(
-            "INSERT INTO tenant_users (tenant,email,role,status,created) "
-            "VALUES (?,?,?, 'invited', ?) "
-            "ON CONFLICT(tenant,email) DO UPDATE SET role=excluded.role",
-            (tid, email.strip().lower(), role, round(time.time(), 3)))
+            "INSERT INTO tenant_users (tenant,email,role,status,invite_token,created) "
+            "VALUES (?,?,?, 'invited', ?, ?) "
+            "ON CONFLICT(tenant,email) DO UPDATE SET role=excluded.role, "
+            "invite_token=excluded.invite_token, status='invited'",
+            (tid, email, role, token, round(time.time(), 3)))
         self._cx.commit()
+        return token
+
+    def accept_invite(self, tid, token, password):
+        """Redeem an invite token: set the user's password and activate them.
+        Returns the user dict on success, or None for a bad/expired token."""
+        if not token:
+            return None
+        row = self._cx.execute(
+            "SELECT id FROM tenant_users WHERE tenant=? AND invite_token=?",
+            (tid.lower(), token)).fetchone()
+        if not row:
+            return None
+        salt, h = _hash(password)
+        self._cx.execute(
+            "UPDATE tenant_users SET salt=?, pw_hash=?, status='active', invite_token=NULL "
+            "WHERE id=?", (salt, h, row["id"]))
+        self._cx.commit()
+        return dict(self._cx.execute(
+            "SELECT * FROM tenant_users WHERE id=?", (row["id"],)).fetchone())
+
+    def authenticate_user(self, tid, email, password):
+        """Verify a team user's login. Returns the user dict (with role) or None."""
+        u = self.get_user(tid, email)
+        if not u or u["status"] != "active" or not u["pw_hash"]:
+            return None
+        _, h = _hash(password, u["salt"])
+        return u if hmac.compare_digest(h, u["pw_hash"]) else None
+
+    def user_role(self, tid, email):
+        """Role for a team member, or None if not a user of this tenant."""
+        u = self.get_user(tid, email)
+        return u["role"] if u else None
 
     def set_role(self, tid, uid, role):
         if role not in ROLES:
