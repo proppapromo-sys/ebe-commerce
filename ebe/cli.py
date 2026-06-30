@@ -121,6 +121,10 @@ def _check():
                 from .adapters.shopify import ShopifyClient
                 ShopifyClient().check()
                 print("  ● %-12s OK · shop reachable" % name)
+            elif name == "ebay":
+                from .adapters.ebay import EbayClient
+                EbayClient().check()
+                print("  ● %-12s OK · access token acquired" % name)
             elif name == "square":
                 from .adapters.square import SquareClient
                 SquareClient().check()
@@ -919,6 +923,9 @@ def _channel_client(args):
     if ch == "shopify":
         from .adapters.shopify import ShopifyClient
         return "Shopify", ShopifyClient()
+    if ch == "ebay":
+        from .adapters.ebay import EbayClient
+        return "eBay", EbayClient()
     from .adapters.amazon_spapi import SpApiClient
     return "Amazon SP-API", SpApiClient(region=args.region or "na", marketplace=args.marketplace or "us")
 

@@ -21,7 +21,8 @@ class DashboardRenderTests(unittest.TestCase):
     def test_render_produces_html_with_sections(self):
         page = dashboard.render(dashboard._data(_args()))
         self.assertTrue(page.startswith("<!doctype html>"))
-        self.assertIn("EBE&nbsp;COMMAND", page)
+        self.assertIn("EBE&nbsp;OS", page)             # default brand (EBE_BRAND overrides)
+        self.assertIn("EBE&nbsp;ORB", page)            # the orb identity is constant
         self.assertIn("Today", page)
         self.assertIn("Cash forecast", page)
         self.assertIn("True edge", page)

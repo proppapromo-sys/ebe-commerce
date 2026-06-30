@@ -75,6 +75,9 @@ def channel_client(name, region="na", marketplace="us"):
     if name == "shopify":
         from .adapters.shopify import ShopifyClient
         return ShopifyClient()
+    if name == "ebay":
+        from .adapters.ebay import EbayClient
+        return EbayClient()
     raise AdapterError("unknown sync channel %r" % name)
 
 
@@ -82,7 +85,7 @@ def configured_channels():
     """Stock channels whose keys are present in .env (so sync --all skips the rest)."""
     from .adapters import config
     out = []
-    for name in ("amazon", "shopify"):
+    for name in ("amazon", "shopify", "ebay"):
         keys = config.NEEDS.get(name, [])
         if keys and not config.require(keys):
             out.append(name)

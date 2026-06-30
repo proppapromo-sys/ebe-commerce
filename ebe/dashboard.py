@@ -221,14 +221,17 @@ def _shell(ctx, current, inner, refresh=False):
     cur_path = next((p for p, _, k in NAV if k == current), "/")
     profs = " · ".join("<a href='%s?profile=%s%s'>%s</a>" % (cur_path, _esc(p), cap, _esc(p))
                        for p in ctx["profiles"])
-    head = ["<!doctype html><html lang=en><head><meta charset=utf-8><title>EBE Command</title>",
+    from . import brand
+    bname = _esc(brand.upper()).replace(" ", "&nbsp;")
+    head = ["<!doctype html><html lang=en><head><meta charset=utf-8><title>%s</title>" % _esc(brand.name()),
             "<meta name=viewport content='width=device-width,initial-scale=1'>"]
     if refresh:
         head.append("<meta http-equiv=refresh content=45>")
     head.append("<style>%s</style></head><body><div class=sweep></div>" % _CSS)
     head.append(
-        "<header class=topbar><div class=brand><span class=core></span>EBE&nbsp;COMMAND"
+        "<header class=topbar><div class=brand><span class=core></span>" + bname +
         "<span class=orbname>EBE&nbsp;ORB</span></div>"
+        +
         "<div class=status><span class=dot></span>EBE ORB ONLINE<span class=sep>·</span>"
         "<span id=clock>--:--:--</span><span class=sep>·</span>%s<span class=sep>·</span>%s</div></header>"
         % (_esc(ctx["pname"]), _esc(ctx["fee"])))
