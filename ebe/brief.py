@@ -73,9 +73,9 @@ def compose(store, profile="generic", fee=None) -> dict:
     elif ordered:
         move = "Receive inbound stock as it lands (%d PO in transit)." % len(ordered)
     elif not products:
-        move = "Load your catalog: python -m ebe catalog --products data/products.csv"
+        move = "Add your first products in the Catalog tab to get started."
     else:
-        move = "Stock is covered — hunt the next edge (Live Edge / Supply tabs)."
+        move = "Stock is covered — find your next product in the Sourcing tab."
 
     return dict(products=len(products), low=len(proposals), proposals=proposals, top=top,
                 cash_to_commit=cash_to_commit, drafts=len(drafts), draft_value=draft_value,

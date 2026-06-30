@@ -24,10 +24,12 @@ import types
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-NAV = [("/brief", "Brief", "brief"), ("/report", "Orb Report", "report"), ("/act", "Act", "act"), ("/", "Today", "today"),
-       ("/catalog", "Catalog", "catalog"), ("/pnl", "P&L", "pnl"), ("/membership", "Member", "membership"),
-       ("/rebuy", "Re-buy", "rebuy"), ("/reprice", "Reprice", "reprice"), ("/source", "Source", "source"),
-       ("/live", "Live Edge", "live"), ("/supply", "Supply · AI", "supply"), ("/venue", "Venue", "venue")]
+# Generalized e-commerce nav (any seller, not a venue). Venue/Supply routes still exist
+# but are off the default nav — they were niche + carried personal sample data.
+NAV = [("/", "Today", "today"), ("/catalog", "Catalog", "catalog"), ("/rebuy", "Restock", "rebuy"),
+       ("/reprice", "Pricing", "reprice"), ("/pnl", "Profit", "pnl"), ("/source", "Sourcing", "source"),
+       ("/live", "Market", "live"), ("/act", "Actions", "act"), ("/brief", "Brief", "brief"),
+       ("/report", "Orb Report", "report"), ("/membership", "Member", "membership")]
 
 _CSS = """
 :root{
@@ -453,11 +455,10 @@ def render_rebuy(args):
     pcash = sum(p["cash"] for p in proposals)
     open_cash = sum(po["cash"] for po in drafts + ordered)
 
-    inner = ["<h2>🔁 Auto re-buy</h2>"]
+    inner = ["<h2>🔁 Restock</h2>"]
     if not live:
-        inner.append("<div class=banner>Showing the <b>sample</b> catalog — approvals are disabled. "
-                     "Load your own with <b>python -m ebe catalog --products data\\products.csv</b>, "
-                     "then this tab goes live on your real stock.</div>")
+        inner.append("<div class=banner>No products yet — add them in the <b>Catalog</b> tab "
+                     "to run restock on your real stock.</div>")
     inner.append(
         "<div class=metrics>"
         "<div class='metric alert'><div class=k>Under reorder line</div><div class=v data-count='%d'>0</div></div>"
@@ -746,8 +747,8 @@ def render_pnl(args):
     t = data["totals"]
     inner = ["<h2>📈 Profit &amp; Loss <span class=sub>(last %d days)</span></h2>" % days]
     if not live:
-        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours and pull "
-                     "sales (<b>python -m ebe sales --channel shopify</b>) for real profit.</div>")
+        inner.append("<div class=banner>No products yet — add them in the <b>Catalog</b> tab, "
+                     "then sync your sales to see real profit.</div>")
     inner.append(
         "<div class=metrics>"
         "<div class=metric><div class=k>Revenue</div><div class=v data-count='%d' data-pre='$'>$0</div></div>"
@@ -767,9 +768,8 @@ def render_pnl(args):
                             r["gross"], mcls, r["margin"] * 100))
         inner.append("</table>")
     else:
-        inner.append("<div class=card>No recorded sales yet — pull them with "
-                     "<b>python -m ebe sales --channel shopify</b>, or log one with "
-                     "<b>python -m ebe sell --id SKU --units N</b>.</div>")
+        inner.append("<div class=card>No sales recorded yet. Connect a channel and sync your orders, "
+                     "and your profit will appear here.</div>")
     return _shell(_ctx_from_args(args), "pnl", "".join(inner))
 
 
@@ -785,8 +785,8 @@ def render_report(args):
 
     inner = ["<h2>🔮 EBE Orb · Business report</h2>"]
     if not live:
-        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours with "
-                     "<b>python -m ebe catalog --products data\\products.csv</b> to report on real numbers.</div>")
+        inner.append("<div class=banner>No products yet — add them in the <b>Catalog</b> tab "
+                     "to report on your real numbers.</div>")
 
     if getattr(args, "ai", False):
         try:
@@ -800,9 +800,8 @@ def render_report(args):
                    ("<p class=sub>➡️ PRIORITIES</p><ul>%s</ul>" % prio) if prio else "",
                    ("<p><b>🎯 Product focus:</b> %s</p>" % _esc(focus)) if focus else ""))
         except Exception as ex:
-            inner.append("<div class='card warn'>EBE Orb report unavailable: %s "
-                         "<span class=sub>(needs ANTHROPIC_API_KEY — run python -m ebe check)</span></div>"
-                         % _esc(str(ex)))
+            inner.append("<div class='card warn'>EBE Orb report isn't available yet "
+                         "<span class=sub>(AI not configured)</span></div>")
     else:
         inner.append("<div class=card><a class='btn go' href='/report?profile=%s&ai=1'>🔮 Ask EBE Orb to brief me</a> "
                      "<span class=sub>Claude writes the executive report from your live numbers</span></div>" % p)
@@ -853,14 +852,12 @@ def render_brief(args):
         except Exception as ex:
             inner.append("<div class='card warn'>AI brief unavailable: %s</div>" % _esc(str(ex)))
     else:
-        inner.append("<div class=card><a class='btn' href='/brief?profile=%s&ai=1'>🧠 Ask EBE to brief me</a> "
-                     "<span class=sub>Claude narrates the morning in plain English</span></div>"
+        inner.append("<div class=card><a class='btn' href='/brief?profile=%s&ai=1'>🧠 Ask EBE Orb to brief me</a></div>"
                      % urllib.parse.quote(prof))
     if not live:
-        inner.append("<div class=banner>Reading the <b>sample</b> catalog — load yours with "
-                     "<b>python -m ebe catalog --products data\\products.csv</b> to brief on real stock.</div>")
-    inner.append("<div class=card><span class=big>Good morning.</span> Systems online. "
-                 "<span class=sub>profile: %s</span></div>" % _esc(prof))
+        inner.append("<div class=banner>No products yet — add them in the <b>Catalog</b> tab "
+                     "to brief on your real stock.</div>")
+    inner.append("<div class=card><span class=big>Good morning.</span> Systems online.</div>")
     inner.append(
         "<div class=metrics>"
         "<div class='metric'><div class=k>SKUs tracked</div><div class=v data-count='%d'>0</div></div>"
@@ -923,7 +920,7 @@ def render_act(args):
     acts = actions.propose(store)
     summ = actions.summarize(acts)
 
-    inner = ["<h2>⚡ Act · approve the day's moves</h2>"]
+    inner = ["<h2>⚡ Actions · approve the day's moves</h2>"]
     if not live:
         inner.append("<div class=banner>Sample catalog — load yours to act on real stock. "
                      "Approvals are disabled here.</div>")
@@ -987,7 +984,7 @@ def render_reprice(args):
     movers = [r for r in recs if abs(r["move"]) >= 0.01]
     uplift = sum(r["move"] for r in recs if r["move"] > 0)
 
-    inner = ["<h2>🏷️ Reprice · %s</h2>" % _esc(strategy)]
+    inner = ["<h2>🏷️ Pricing · %s</h2>" % _esc(strategy)]
     if not live:
         inner.append("<div class=banner>Sample catalog — add an <b>asin</b> column to your products "
                      "for live Keepa pricing. Strategy &amp; floor still compute now.</div>")
@@ -1073,8 +1070,7 @@ def render_sheet(args):
             inner.append("<tr><td>#%d<td>%s<td>%s<td class=r>%d<td class=r>$%.2f<td class=r>$%.2f</tr>"
                          % (po["id"], _esc(po["sku"]), _esc(po["name"]), po["qty"], po["unit_cost"], po["cash"]))
         inner.append("<tr><td colspan=5 class=r><b>Subtotal</b><td class=r><b>$%.2f</b></tr></table></div>" % sub)
-    inner.append("<div class=card><span class=big>TOTAL TO AUTHORISE: $%.0f</span> · %d supplier(s) · "
-                 "<span class=sub>run <b>python -m ebe po --out orders.md</b> to export</span></div>"
+    inner.append("<div class=card><span class=big>TOTAL TO AUTHORISE: $%.0f</span> · %d supplier(s)</div>"
                  % (grand, len(groups)))
     return _shell(_ctx_from_args(args), "rebuy", "".join(inner))
 
@@ -1109,7 +1105,7 @@ def render_source(args, text):
     prof = PROFILES.get(args.profile or "generic") or PROFILES["generic"]
     fee = PRESETS[args.fees]
     text = text or _SAMPLE_CANDIDATES
-    inner = ["<h2>🧪 Source · rank candidates before you buy</h2>",
+    inner = ["<h2>🧪 Sourcing · rank candidates before you buy</h2>",
              "<form class=card action='/source' method=get>"
              "<div class=sub>one product per line: <b>name,category,cost,sell,monthly_sales,competition</b></div>"
              "<textarea name=cand>%s</textarea><input type=hidden name=profile value='%s'>"
@@ -1139,7 +1135,7 @@ def render_source(args, text):
 
 # ── LIVE EDGE page (Keepa) ───────────────────────────────────────────────────
 def render_live(args, asins):
-    inner = ["<h2>🧭 Live edge &amp; arbitrage (Keepa)</h2>",
+    inner = ["<h2>🧭 Market · competitor prices &amp; arbitrage</h2>",
              "<form class=card action='/live' method=get>"
              "ASINs: <input name=asins value='%s' size=48 placeholder='B08VRZTHDL,B0BTD83JZR'> "
              "<input type=hidden name=profile value='%s'> <button>Score live</button></form>"

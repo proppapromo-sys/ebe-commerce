@@ -49,7 +49,7 @@ class BriefTests(unittest.TestCase):
             empty = Store(p)
             b = brief.compose(empty)
             self.assertEqual(b["products"], 0)
-            self.assertIn("catalog", b["move"])
+            self.assertIn("Catalog", b["move"])           # points new users to the Catalog tab
             empty.close()
         finally:
             os.remove(p)

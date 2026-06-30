@@ -52,7 +52,7 @@ class DashboardRenderTests(unittest.TestCase):
 
     def test_reprice_tab_shows_floor_and_strategy(self):
         page = dashboard.render_reprice(_args(strategy="undercut"))
-        self.assertIn("Reprice", page)
+        self.assertIn("Pricing", page)
         self.assertIn("floor", page.lower())           # floor analysis present without keys
         self.assertIn("data-count", page)              # animated metric tiles
 
@@ -68,7 +68,7 @@ class DashboardRenderTests(unittest.TestCase):
                                 "on_hand": 0, "monthly_sales": 300, "lead_time_days": 14}])
             s.close()
             page = dashboard.render_rebuy(_args(db=path))
-            self.assertIn("Auto re-buy", page)
+            self.assertIn("Restock", page)
             self.assertIn("Proposed re-buys", page)        # A is under the reorder line
         finally:
             if os.path.exists(path):
@@ -77,9 +77,8 @@ class DashboardRenderTests(unittest.TestCase):
     def test_landscape_nav_and_switcher_panels(self):
         page = dashboard.render(dashboard._data(_args()))
         self.assertIn("Landscape", page)
-        self.assertIn("/venue?profile=", page)         # nav tab to the venue page
-        self.assertIn("/live?profile=", page)          # nav tab to the live page
-        self.assertIn("/?profile=hookah", page)        # clickable profile switcher
+        self.assertIn("/catalog?profile=", page)       # generalized nav tab
+        self.assertIn("/live?profile=", page)          # market tab
         self.assertIn("http-equiv=refresh", page)      # auto-refresh
 
     def test_subpages_render_forms_without_keys(self):
