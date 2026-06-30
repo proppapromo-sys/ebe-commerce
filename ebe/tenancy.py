@@ -36,7 +36,24 @@ CREATE TABLE IF NOT EXISTS tenants (
     stripe_customer TEXT,
     created  REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS tenant_users (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant  TEXT NOT NULL,
+    email   TEXT NOT NULL,
+    role    TEXT NOT NULL DEFAULT 'member',     -- owner | admin | member | viewer
+    status  TEXT NOT NULL DEFAULT 'invited',    -- invited | active
+    salt    TEXT,
+    pw_hash TEXT,
+    created REAL NOT NULL DEFAULT 0,
+    UNIQUE(tenant, email)
+);
 """
+
+ROLES = ("owner", "admin", "member", "viewer")
+
+
+class SeatLimitError(Exception):
+    """Raised when inviting a user would exceed the plan's seat cap."""
 
 
 def _hash(password, salt=None):
@@ -104,6 +121,53 @@ class Tenants:
                          (base + days * 86400, tid.lower()))
         self._cx.commit()
         return self.tenant(tid)
+
+    # ---- team users (seats) --------------------------------------------------
+    def seat_cap(self, tid):
+        """Max users (incl. owner) the tenant's plan allows."""
+        from . import plans
+        t = self.tenant(tid)
+        return plans.seat_cap(t["plan"]) if t else 1
+
+    def list_users(self, tid):
+        cur = self._cx.execute(
+            "SELECT id,email,role,status,created FROM tenant_users WHERE tenant=? ORDER BY id",
+            (tid.lower(),))
+        return [dict(r) for r in cur.fetchall()]
+
+    def seats_used(self, tid):
+        """Owner counts as 1, plus every invited/active team user."""
+        n = self._cx.execute("SELECT COUNT(*) FROM tenant_users WHERE tenant=?",
+                             (tid.lower(),)).fetchone()[0]
+        return 1 + int(n)
+
+    def can_add_user(self, tid):
+        return self.seats_used(tid) < self.seat_cap(tid)
+
+    def add_user(self, tid, email, role="member"):
+        """Invite a team user. Raises SeatLimitError if the plan's seats are full."""
+        tid = tid.lower()
+        role = role if role in ROLES else "member"
+        if not self.can_add_user(tid):
+            raise SeatLimitError("seat limit reached for plan")
+        self._cx.execute(
+            "INSERT INTO tenant_users (tenant,email,role,status,created) "
+            "VALUES (?,?,?, 'invited', ?) "
+            "ON CONFLICT(tenant,email) DO UPDATE SET role=excluded.role",
+            (tid, email.strip().lower(), role, round(time.time(), 3)))
+        self._cx.commit()
+
+    def set_role(self, tid, uid, role):
+        if role not in ROLES:
+            return
+        self._cx.execute("UPDATE tenant_users SET role=? WHERE tenant=? AND id=?",
+                         (role, tid.lower(), int(uid)))
+        self._cx.commit()
+
+    def remove_user(self, tid, uid):
+        self._cx.execute("DELETE FROM tenant_users WHERE tenant=? AND id=?",
+                         (tid.lower(), int(uid)))
+        self._cx.commit()
 
     def suspend(self, tid):
         self._cx.execute("UPDATE tenants SET status='suspended' WHERE id=?", (tid.lower(),))

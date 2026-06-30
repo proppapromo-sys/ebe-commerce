@@ -29,7 +29,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 NAV = [("/", "Today", "today"), ("/catalog", "Catalog", "catalog"), ("/rebuy", "Restock", "rebuy"),
        ("/reprice", "Pricing", "reprice"), ("/pnl", "Profit", "pnl"), ("/discover", "Discover", "discover"),
        ("/live", "Market", "live"), ("/act", "Actions", "act"), ("/brief", "Brief", "brief"),
-       ("/report", "Orb Report", "report"), ("/membership", "Member", "membership")]
+       ("/report", "Orb Report", "report"), ("/membership", "Member", "membership"),
+       ("/settings", "Settings", "settings")]
 
 _CSS = """
 :root{
@@ -756,6 +757,23 @@ def _do_catalog_sync(args):
     return "✓ synced — %d SKU(s) updated, %d unknown" % (len(res["updated"]), len(res["unknown"]))
 
 
+# ── SETTINGS page (generic; the hosted version adds team + plan) ─────────────
+def render_settings(args):
+    from . import brand
+    from . import sync as syncmod
+    chans = syncmod.configured_channels()
+    cmark = lambda n: ("<span class=ok>✓ %s</span>" % n) if n in chans else ("<span class=sub>○ %s</span>" % n)
+    inner = ["<h2>⚙️ Settings</h2>"]
+    inner.append("<div class=card><b>Business</b><div style='margin-top:6px'>Product name: <b>%s</b></div>"
+                 "<div class=sub>Your store's name across the app.</div></div>" % _esc(brand.name()))
+    inner.append("<h2>🔌 Connections</h2>")
+    inner.append("<div class=card>%s &nbsp; %s &nbsp; %s"
+                 "<div class=sub>Connect your sales channels to sync stock, prices, and orders.</div></div>"
+                 % (cmark("shopify"), cmark("amazon"), cmark("ebay")))
+    inner.append("<div class=card><div class=sub>Team management, plan &amp; billing live in your hosted account.</div></div>")
+    return _shell(_ctx_from_args(args), "settings", "".join(inner))
+
+
 # ── MEMBERSHIP page (tier by monthly revenue) ────────────────────────────────
 def render_membership(args):
     from .store import Store, DEFAULT_DB
@@ -1447,6 +1465,8 @@ def serve(args):
                     body = render_pnl(a)
                 elif path == "/membership":
                     body = render_membership(a)
+                elif path == "/settings":
+                    body = render_settings(a)
                 elif path == "/act":
                     body = render_act(a)
                 elif path == "/catalog":

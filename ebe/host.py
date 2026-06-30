@@ -47,9 +47,52 @@ def _cookie(header, key):
 
 def _tenant_args(tenant, qs):
     return types.SimpleNamespace(
+        id=tenant["id"], name=tenant["name"],
         fees="amazon-fba", products=None, costs=None, journal=None, capital=None,
         port=None, strategy=None, db=tenant["db_path"],
         profile=(qs.get("profile") or ["generic"])[0])
+
+
+def render_tenant_settings(tn, tid, a, msg=""):
+    """Full settings for a hosted tenant: business, plan + seats, and team management."""
+    from . import plans, dashboard
+    esc = dashboard._esc
+    t = tn.tenant(tid)
+    pl = plans.plan(t["plan"])
+    used, cap = tn.seats_used(tid), tn.seat_cap(tid)
+    inner = ["<h2>⚙️ Settings</h2>"]
+    if msg:
+        inner.append("<div class=card>%s</div>" % esc(msg))
+    inner.append("<div class=card><b>Business</b><div style='margin-top:6px'><b>%s</b></div>"
+                 "<div class=sub>account: %s</div></div>" % (esc(t["name"]), esc(tid)))
+
+    feats = [f for f in plans.FEATURES if plans.includes(t["plan"], f)]
+    inner.append("<div class=card><b>Plan</b> · <span class=big>%s</span> &nbsp;$%d/mo"
+                 "<div class=sub>seats %d / %d used · %d features unlocked</div></div>"
+                 % (esc(pl["name"]), pl["monthly"], used, cap, len(feats)))
+
+    inner.append("<h2>👥 Team</h2>")
+    inner.append("<table><tr><th>email<th>role<th>status<th></tr>")
+    inner.append("<tr><td>%s<td>owner<td><span class=ok>active</span><td></tr>" % esc(t["name"]))
+    for u in tn.list_users(tid):
+        inner.append("<tr><td>%s<td>%s<td>%s<td>"
+                     "<a class='btn ghost sm' href='/settings-remove?uid=%d'>remove</a></tr>"
+                     % (esc(u["email"]), esc(u["role"]), esc(u["status"]), u["id"]))
+    inner.append("</table>")
+
+    if tn.can_add_user(tid):
+        inner.append(
+            "<div class=card><form action='/settings-invite' method=get class=addform>"
+            "<input name=email type=email placeholder='teammate@email.com' required>"
+            "<select name=role><option>member</option><option>admin</option><option>viewer</option></select>"
+            "<button class='btn go' type=submit>Invite</button></form>"
+            "<div class=sub>%d of %d seats used.</div></div>" % (used, cap))
+    else:
+        nxt = plans.next_seat_upgrade(t["plan"])
+        up = plans.plan(nxt)["name"] if nxt else "a higher plan"
+        inner.append("<div class='card warn'>All %d seats used — upgrade to <b>%s</b> to add more team users.</div>"
+                     % (cap, esc(up)))
+    return dashboard._shell(dashboard._ctx_from_args(a), "settings", "".join(inner))
 
 
 def _page(title, inner):
@@ -228,6 +271,23 @@ def serve(args):
                 dashboard._do_price(a, qs); self._redirect("/reprice?profile=%s" % a.profile); return None
             if path == "/do":
                 dashboard._do_act(a, qs); self._redirect("/act?profile=%s" % a.profile); return None
+            # Team settings actions
+            if path == "/settings-invite":
+                from .tenancy import SeatLimitError
+                email = (qs.get("email") or [""])[0].strip()
+                role = (qs.get("role") or ["member"])[0]
+                if not email:
+                    msg = "Enter an email to invite."
+                else:
+                    try:
+                        self.tn.add_user(a.id, email, role)
+                        msg = "Invited %s as %s." % (email, role)
+                    except SeatLimitError:
+                        msg = "Seat limit reached — upgrade your plan to add more users."
+                self._redirect("/settings?msg=%s" % urllib.parse.quote(msg)); return None
+            if path == "/settings-remove":
+                self.tn.remove_user(a.id, (qs.get("uid") or ["0"])[0])
+                self._redirect("/settings"); return None
             # Catalog write actions — apply to the tenant's own DB, then back to /catalog
             if path in ("/catalog-add", "/catalog-publish", "/catalog-sync", "/catalog-describe"):
                 if path == "/catalog-add":
@@ -248,6 +308,7 @@ def serve(args):
                 "/catalog": lambda: dashboard.render_catalog(a, (qs.get("msg") or [""])[0]),
                 "/pnl": lambda: dashboard.render_pnl(a),
                 "/membership": lambda: dashboard.render_membership(a),
+                "/settings": lambda: render_tenant_settings(self.tn, a.id, a, (qs.get("msg") or [""])[0]),
                 "/rebuy": lambda: dashboard.render_rebuy(a),
                 "/reprice": lambda: dashboard.render_reprice(a),
                 "/source": lambda: dashboard.render_source(a, (qs.get("cand") or [""])[0]),
