@@ -73,12 +73,14 @@ def rank_candidates(items, profile=None, fee=None, learned=None) -> list:
     for it in items:
         e = score(it, profile, fee, learned=learned)
         cost, sell = it.get("cost", 0), it.get("sell", 0)
-        net = fee.net_unit(sell, cost)
+        # a product's own fulfilment cost (e.g. its real 3PL fee) overrides the channel default
+        ffee = fee.with_fulfilment(it["fulfilment"]) if it.get("fulfilment") else fee
+        net = ffee.net_unit(sell, cost)
         ms = it.get("monthly_sales", 0) or 0
         out.append({
             "item": it, "name": it["name"], "category": it.get("category", "?"),
             "cost": cost, "sell": sell, "net_unit": round(net, 2),
-            "roi": fee.roi(sell, cost), "margin": fee.margin(sell, cost),
+            "roi": ffee.roi(sell, cost), "margin": ffee.margin(sell, cost),
             "monthly_profit": round(net * ms, 0),
             "composite": e.composite, "moat": e.moat, "verdict": e.verdict,
         })

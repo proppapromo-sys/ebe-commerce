@@ -25,6 +25,12 @@ class FeeModel:
         """Total $ skimmed off one sale at this price."""
         return sell * (self.referral_pct + self.ad_pct + self.return_rate) + self.fulfilment
 
+    def with_fulfilment(self, fulfilment: float) -> "FeeModel":
+        """A copy of this fee model with a different flat per-unit fulfilment cost
+        (e.g. a product's real 3PL pick/pack/ship fee instead of the channel default)."""
+        import dataclasses
+        return dataclasses.replace(self, fulfilment=float(fulfilment))
+
     def net_unit(self, sell: float, cost: float) -> float:
         """Profit on ONE unit after every fee. The only honest number."""
         return sell - cost - self.fees(sell)

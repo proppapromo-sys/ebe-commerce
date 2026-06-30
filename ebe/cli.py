@@ -1172,7 +1172,8 @@ def _add(args):
     for attr, col in (("name", "name"), ("category", "category"), ("cost", "cost"),
                       ("sell", "sell"), ("on_hand", "on_hand"), ("monthly", "monthly_sales"),
                       ("supplier", "supplier"), ("lead_time", "lead_time_days"), ("asin", "asin"),
-                      ("description", "description"), ("image", "image_url")):
+                      ("description", "description"), ("image", "image_url"),
+                      ("fulfilment", "fulfilment")):
         val = getattr(args, attr, None)
         if val is not None:
             row[col] = val
@@ -1571,6 +1572,7 @@ def main(argv=None):
     ap.add_argument("--text", help="import: listings inline instead of --file (newline or blank-line separated)")
     ap.add_argument("--product-type", dest="product_type", help="publish amazon: Amazon product type (e.g. PRODUCT)")
     ap.add_argument("--search", help="product-types: keyword to find an Amazon product type")
+    ap.add_argument("--fulfilment", type=float, default=None, help="add: per-unit pick/pack/ship cost (e.g. your 3PL fee) — used in score/margin")
     args = ap.parse_args(argv)
 
     if args.max_calls is not None:
